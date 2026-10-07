@@ -7,11 +7,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>body { font-family: 'Prompt', sans-serif; background-color: #fff1f2; }</style>
+    <style>body { font-family: 'Prompt', sans-serif; background-color: #fff1f2; } .hide-scrollbar::-webkit-scrollbar { display: none; }</style>
 </head>
-<body class="pb-28 text-slate-800">
+<body class="pb-44 text-slate-800">
 
-    <!-- แถบแจ้งเตือนสถานะปิดร้าน (ซ่อนไว้โดยค่าเริ่มต้น จะแสดงเมื่อร้านปิด) -->
+    <!-- แถบแจ้งเตือนสถานะปิดร้าน -->
     <div id="store-closed-banner" class="bg-rose-600 text-white text-center py-3 px-4 font-bold text-sm shadow-md hidden sticky top-0 z-40 flex items-center justify-center gap-2">
         <i class="fas fa-store-slash text-lg"></i> ขออภัย! ขณะนี้ร้านปิดรับออเดอร์เดลิเวอรี่ชั่วคราว
     </div>
@@ -30,16 +30,40 @@
         </div>
     </header>
 
-    <main class="max-w-md mx-auto px-4 py-4" id="menu-container">
+    <!-- ตัวกรองหมวดหมู่เดลิเวอรี่ -->
+    <div class="bg-white shadow-sm mb-2">
+        <div class="px-4 py-3 flex gap-2 overflow-x-auto hide-scrollbar max-w-md mx-auto" id="category-container">
+        </div>
+    </div>
+
+    <!-- พื้นที่โชว์คูปองด้านบนสุด (เฉพาะที่ตั้งให้แสดง) -->
+    <div class="max-w-md mx-auto px-4 py-3 hidden" id="coupon-showcase-container">
+        <h3 class="font-bold text-sm text-slate-700 mb-2"><i class="fas fa-ticket-alt text-rose-500 mr-1"></i> โค้ดส่วนลด / โปรโมชั่น</h3>
+        <div class="flex gap-3 overflow-x-auto hide-scrollbar pb-2" id="coupon-showcase">
+        </div>
+    </div>
+
+    <main class="max-w-md mx-auto px-4 py-2" id="menu-container">
         <div class="text-center py-10 text-rose-300"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p>กำลังโหลดเมนู...</p></div>
     </main>
 
-    <!-- แถบตะกร้าสินค้า (เดลิเวอรี่) -->
+    <!-- แถบตะกร้าสินค้า (เดลิเวอรี่) พร้อมระบบคูปอง -->
     <div id="cart-bar" class="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_15px_rgba(0,0,0,0.1)] rounded-t-3xl transition-transform duration-300 transform translate-y-full z-30">
         <div class="max-w-md mx-auto px-6 py-4">
-            <div class="flex justify-between items-center mb-3 text-sm">
+            
+            <!-- ส่วนลดคูปอง -->
+            <div class="flex gap-2 mb-3">
+                <input type="text" id="coupon-input" placeholder="พิมพ์โค้ดส่วนลดที่นี่..." class="w-full p-2 border border-slate-200 rounded-lg text-sm uppercase outline-none focus:border-rose-500 bg-slate-50">
+                <button onclick="applyCoupon()" class="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap shadow-sm">ใช้คูปอง</button>
+            </div>
+
+            <div class="flex justify-between items-center mb-2 text-sm">
                 <span class="text-slate-500">ค่าอาหาร</span>
                 <span class="font-medium">฿<span id="cart-subtotal">0</span></span>
+            </div>
+            <div id="discount-row" class="flex justify-between items-center mb-2 text-sm text-emerald-500 hidden">
+                <span>ส่วนลดคูปอง <span id="applied-coupon-text" class="text-[10px] bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded ml-1 font-bold"></span></span>
+                <span class="font-medium">- ฿<span id="cart-discount">0</span></span>
             </div>
             <div class="flex justify-between items-center mb-3 text-sm text-rose-500">
                 <span>ค่าจัดส่ง (กม. ละ 5 บาท)</span>
@@ -84,7 +108,7 @@
     <!-- ========================================== -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, serverTimestamp, query, orderBy, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, serverTimestamp, query, orderBy, doc, onSnapshot, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAsgcKhn0V1lYjF754aypxZv5C-PmHCvno",
@@ -100,8 +124,65 @@
         let cart = [];
         let deliveryInfo = { name: '', phone: '', address: '', fee: 40 };
         let isStoreOpen = true;
+        
+        let allMenus = [];
+        let allCategories = [];
+        let currentCategory = 'all';
 
-        // 1. ตรวจสอบสถานะเปิด/ปิดร้านแบบ Real-time จาก Firebase
+        let allCoupons = [];
+        let appliedDiscount = 0;
+        let appliedCouponCode = '';
+
+        // ฟังก์ชันตรวจเช็คคูปอง
+        const isCouponValid = (c) => {
+            if(c.active === false) return false;
+            const now = new Date();
+            if (c.startDate && new Date(c.startDate) > now) return false;
+            if (c.endDate && new Date(c.endDate) < now) return false;
+            if (c.usageLimit && c.usageLimit > 0 && (c.usedCount || 0) >= c.usageLimit) return false;
+            return true;
+        };
+
+        onSnapshot(collection(db, "coupons"), (snapshot) => {
+            allCoupons = [];
+            snapshot.forEach(doc => allCoupons.push({ id: doc.id, ...doc.data() }));
+            window.renderCouponsShowcase(); 
+        });
+
+        window.renderCouponsShowcase = () => {
+            const container = document.getElementById('coupon-showcase');
+            const wrapper = document.getElementById('coupon-showcase-container');
+            
+            const visibleCoupons = allCoupons.filter(c => c.visibility === 'show' && isCouponValid(c));
+            
+            if(visibleCoupons.length === 0) {
+                wrapper.classList.add('hidden');
+                return;
+            }
+            
+            wrapper.classList.remove('hidden');
+            container.innerHTML = visibleCoupons.map(c => `
+                <div class="bg-gradient-to-r from-rose-500 to-orange-500 rounded-xl p-3 text-white min-w-[200px] flex-shrink-0 shadow-md relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-12 h-12 bg-white/20 rounded-full"></div>
+                    <div class="absolute -right-4 -bottom-4 w-16 h-16 bg-white/10 rounded-full"></div>
+                    <h4 class="font-bold text-lg mb-0 tracking-wide">${c.code}</h4>
+                    <p class="text-[11px] text-rose-50 mb-3 opacity-90">ส่วนลด ${c.value}${c.type === 'percent' ? '%' : ' บาท'}</p>
+                    <button onclick="autoApplyCoupon('${c.code}')" class="bg-white text-rose-600 text-xs font-bold px-3 py-1.5 rounded-lg w-full hover:bg-slate-50 transition-colors shadow-sm relative z-10">
+                        เก็บคูปอง / ใช้เลย
+                    </button>
+                </div>
+            `).join('');
+        };
+
+        window.autoApplyCoupon = (code) => {
+            document.getElementById('coupon-input').value = code;
+            if (cart.length > 0) {
+                applyCoupon();
+            } else {
+                alert(`เก็บโค้ด ${code} สำเร็จ! กรุณาเลือกเมนูอาหารลงตะกร้าก่อนระบบจึงจะคำนวณส่วนลดให้`);
+            }
+        };
+
         onSnapshot(doc(db, "settings", "shop"), (docSnap) => {
             if (docSnap.exists()) {
                 isStoreOpen = docSnap.data().deliveryOpen ?? true;
@@ -115,34 +196,85 @@
             
             if (!isOpen) {
                 banner.classList.remove('hidden');
-                cartBar.classList.add('translate-y-full'); // ซ่อนตะกร้า
+                cartBar.classList.add('translate-y-full');
             } else {
                 banner.classList.add('hidden');
             }
-            fetchMenus(); // โหลดเมนูใหม่เพื่อให้ปุ่มกดถูกปิดใช้งาน/เป็นสีเทา
+            window.renderMenus(); 
         }
 
-        // 2. โหลดเมนู (ถ้าปิดร้าน เมนูจะเปลี่ยนเป็นสีเทาและกดสั่งไม่ได้)
         async function fetchMenus() {
-            const container = document.getElementById('menu-container');
             const q = query(collection(db, "menu_items"), orderBy("created_at", "desc"));
             const querySnapshot = await getDocs(q);
-            container.innerHTML = '';
+            
+            allMenus = [];
+            allCategories = [];
 
             querySnapshot.forEach((docSnap) => {
-                const item = docSnap.data();
+                const item = { id: docSnap.id, ...docSnap.data() };
+                allMenus.push(item);
+                const cat = item.category || 'ไม่มีหมวดหมู่';
+                if(!allCategories.includes(cat)) {
+                    allCategories.push(cat);
+                }
+            });
+            window.renderCategoryFilters();
+            window.renderMenus();
+        }
+
+        window.renderCategoryFilters = () => {
+            const container = document.getElementById('category-container');
+            if(!container) return;
+            let html = `<button onclick="window.setCategory('all')" class="px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${currentCategory === 'all' ? 'bg-rose-600 text-white shadow-sm' : 'bg-rose-50 text-rose-600 hover:bg-rose-100'}">ทั้งหมด</button>`;
+            allCategories.forEach(c => {
+                html += `<button onclick="window.setCategory('${c}')" class="px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${currentCategory === c ? 'bg-rose-600 text-white shadow-sm' : 'bg-rose-50 text-rose-600 hover:bg-rose-100'}">${c}</button>`;
+            });
+            container.innerHTML = html;
+        };
+
+        window.setCategory = (cat) => {
+            currentCategory = cat;
+            window.renderCategoryFilters();
+            window.renderMenus();
+        };
+
+        window.renderMenus = () => {
+            const container = document.getElementById('menu-container');
+            container.innerHTML = '';
+            
+            if(allMenus.length === 0) return;
+
+            let filtered = allMenus;
+            if(currentCategory !== 'all') {
+                filtered = allMenus.filter(m => (m.category || 'ไม่มีหมวดหมู่') === currentCategory);
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="text-center py-10 text-rose-300">ไม่มีเมนูในหมวดหมู่นี้</div>';
+                return;
+            }
+
+            filtered.forEach(item => {
+                const isOutOfStock = item.stock !== undefined && item.stock !== null && item.stock <= 0;
+                const opacityStyle = (!isStoreOpen || isOutOfStock) ? 'opacity-50 grayscale-[50%] bg-slate-100' : 'bg-white';
                 
-                // กำหนดสไตล์เมื่อร้านปิด (สีเทา โปร่งแสง และปุ่มกดไม่ได้)
-                const opacityStyle = !isStoreOpen ? 'opacity-50 grayscale bg-slate-100' : 'bg-white';
-                const buttonHTML = !isStoreOpen 
-                    ? `<button disabled class="px-4 py-1.5 rounded-full bg-slate-200 text-slate-400 font-medium text-sm cursor-not-allowed">ปิดรับออเดอร์</button>`
-                    : `<button onclick="window.addToCart('${item.name}', ${item.price})" class="px-4 py-1.5 rounded-full bg-rose-50 text-rose-600 font-medium text-sm hover:bg-rose-100">เพิ่ม</button>`;
+                let buttonHTML = '';
+                if (!isStoreOpen) {
+                    buttonHTML = `<button disabled class="px-4 py-1.5 rounded-full bg-slate-200 text-slate-400 font-medium text-sm cursor-not-allowed">ปิดรับออเดอร์</button>`;
+                } else if (isOutOfStock) {
+                    buttonHTML = `<button disabled class="px-4 py-1.5 rounded-full bg-slate-200 text-rose-500 font-bold text-sm cursor-not-allowed">สินค้าหมด</button>`;
+                } else {
+                    buttonHTML = `<button onclick="window.addToCart('${item.id}', '${item.name}', ${item.price})" class="px-4 py-1.5 rounded-full bg-rose-50 text-rose-600 font-medium text-sm hover:bg-rose-100">เพิ่ม</button>`;
+                }
 
                 container.innerHTML += `
                     <div class="${opacityStyle} rounded-2xl p-3 flex gap-4 mb-4 shadow-sm border border-rose-50 transition-all">
                         <img src="${item.img}" class="w-24 h-24 rounded-xl object-cover">
                         <div class="flex-1 flex flex-col justify-between py-1">
-                            <div><h3 class="font-bold text-slate-800">${item.name}</h3></div>
+                            <div>
+                                <h3 class="font-bold text-slate-800">${item.name}</h3>
+                                ${isOutOfStock && isStoreOpen ? `<p class="text-[10px] text-rose-500 mt-1 font-bold"><i class="fas fa-times-circle"></i> สินค้าหมด</p>` : ''}
+                            </div>
                             <div class="flex justify-between items-center mt-2">
                                 <span class="font-bold text-rose-600">฿${item.price}</span>
                                 ${buttonHTML}
@@ -151,28 +283,88 @@
                     </div>
                 `;
             });
-        }
+        };
 
-        window.addToCart = (name, price) => {
+        window.addToCart = (id, name, price) => {
             if (!isStoreOpen) {
                 alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่ชั่วคราว');
                 return;
             }
-            const existing = cart.find(i => i.name === name);
+            const existing = cart.find(i => i.id === id);
             if (existing) existing.qty += 1;
-            else cart.push({ name, price, qty: 1 });
+            else cart.push({ id, name, price, qty: 1 });
+            
+            if (document.getElementById('coupon-input').value.trim() !== '') {
+                applyCoupon(false);
+            } else {
+                updateCartUI();
+            }
+        };
+
+        window.applyCoupon = (showAlert = true) => {
+            const code = document.getElementById('coupon-input').value.trim().toUpperCase();
+            if(!code) return;
+            const coupon = allCoupons.find(c => c.code === code);
+            
+            if(!coupon || !isCouponValid(coupon)) {
+                if(showAlert) alert('คูปองไม่ถูกต้อง หมดเวลาโปรโมชั่น หรือสิทธิ์เต็มแล้ว');
+                document.getElementById('coupon-input').value = '';
+                appliedCouponCode = '';
+                updateCartUI();
+                return;
+            }
+
+            const applicableItemsInCart = cart.filter(item => coupon.applicable_items.includes(item.id));
+            if(applicableItemsInCart.length === 0) {
+                if(showAlert) alert('คูปองนี้ไม่สามารถใช้ร่วมกับเมนูในตะกร้าของคุณได้');
+                return;
+            }
+
+            let subtotalForDiscount = applicableItemsInCart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+            if (coupon.type === 'amount') {
+                appliedDiscount = Math.min(coupon.value, subtotalForDiscount);
+            } else {
+                appliedDiscount = subtotalForDiscount * (coupon.value / 100);
+            }
+            appliedCouponCode = code;
+            
+            if(showAlert) alert('ใช้คูปองส่วนลดสำเร็จ!');
             updateCartUI();
         };
 
         function updateCartUI() {
             if (!isStoreOpen) return;
             const bar = document.getElementById('cart-bar');
+            
             const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
-            const total = subtotal + deliveryInfo.fee;
+            
+            if(appliedCouponCode) {
+                const coupon = allCoupons.find(c => c.code === appliedCouponCode);
+                if(coupon && isCouponValid(coupon)) {
+                    const applicableItems = cart.filter(item => coupon.applicable_items.includes(item.id));
+                    let subtotalForDiscount = applicableItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
+                    appliedDiscount = coupon.type === 'amount' ? Math.min(coupon.value, subtotalForDiscount) : subtotalForDiscount * (coupon.value / 100);
+                } else {
+                    appliedDiscount = 0;
+                    appliedCouponCode = '';
+                }
+            }
+
+            const total = subtotal - appliedDiscount + deliveryInfo.fee;
             
             document.getElementById('cart-subtotal').innerText = subtotal;
             document.getElementById('cart-delivery').innerText = cart.length > 0 ? deliveryInfo.fee : 0;
-            document.getElementById('cart-total').innerText = cart.length > 0 ? total : 0;
+            
+            if(appliedDiscount > 0) {
+                document.getElementById('discount-row').classList.remove('hidden');
+                document.getElementById('cart-discount').innerText = appliedDiscount.toFixed(2);
+                document.getElementById('applied-coupon-text').innerText = appliedCouponCode;
+            } else {
+                document.getElementById('discount-row').classList.add('hidden');
+                appliedCouponCode = '';
+            }
+
+            document.getElementById('cart-total').innerText = cart.length > 0 ? (total > 0 ? total.toFixed(2) : '0') : 0;
             
             cart.length > 0 ? bar.classList.remove('translate-y-full') : bar.classList.add('translate-y-full');
         }
@@ -200,7 +392,10 @@
         window.simulatePaymentSuccess = async () => {
             if (!isStoreOpen) return alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่แล้ว');
             document.getElementById('payment-modal').classList.add('hidden');
+            
             const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+            const total = subtotal - appliedDiscount + deliveryInfo.fee;
+
             try {
                 await addDoc(collection(db, "orders"), {
                     type: "delivery",
@@ -208,12 +403,26 @@
                     address: deliveryInfo.address,
                     deliveryFee: deliveryInfo.fee,
                     items: cart,
-                    total: subtotal + deliveryInfo.fee,
+                    discount: appliedDiscount,
+                    couponCode: appliedCouponCode,
+                    total: total > 0 ? total : 0,
                     status: "รอยืนยัน",
                     timestamp: serverTimestamp()
                 });
+
+                // อัปเดตยอดโควต้าคูปอง (ถ้ามีการใช้)
+                if(appliedCouponCode) {
+                    const coupon = allCoupons.find(c => c.code === appliedCouponCode);
+                    if(coupon) {
+                        await updateDoc(doc(db, "coupons", coupon.id), { usedCount: increment(1) });
+                    }
+                }
+
                 alert('ชำระเงินสำเร็จ! ออเดอร์ถูกส่งไปยังร้านค้าแล้ว');
                 cart = [];
+                appliedDiscount = 0;
+                appliedCouponCode = '';
+                document.getElementById('coupon-input').value = '';
                 updateCartUI();
             } catch (e) {
                 alert("Error: " + e.message);
@@ -221,6 +430,7 @@
         };
 
         setTimeout(() => openAddressModal(), 500);
+        fetchMenus(); // โหลดข้อมูลเริ่มแรก
     </script>
 </body>
 </html>
