@@ -11,6 +11,11 @@
 </head>
 <body class="pb-28 text-slate-800">
 
+    <!-- แถบแจ้งเตือนสถานะปิดร้าน (ซ่อนไว้โดยค่าเริ่มต้น จะแสดงเมื่อร้านปิด) -->
+    <div id="store-closed-banner" class="bg-rose-600 text-white text-center py-3 px-4 font-bold text-sm shadow-md hidden sticky top-0 z-40 flex items-center justify-center gap-2">
+        <i class="fas fa-store-slash text-lg"></i> ขออภัย! ขณะนี้ร้านปิดรับออเดอร์เดลิเวอรี่ชั่วคราว
+    </div>
+
     <header class="bg-rose-600 text-white shadow-md sticky top-0 z-30 pt-4 pb-3 rounded-b-2xl">
         <div class="px-4 max-w-md mx-auto">
             <h1 class="text-xl font-bold mb-3">Terra Bite Delivery</h1>
@@ -74,9 +79,12 @@
         </div>
     </div>
 
+    <!-- ========================================== -->
+    <!-- SCRIPT (Delivery Customer Page) -->
+    <!-- ========================================== -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, serverTimestamp, query, orderBy } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, serverTimestamp, query, orderBy, doc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAsgcKhn0V1lYjF754aypxZv5C-PmHCvno",
@@ -90,27 +98,54 @@
         const db = getFirestore(app);
 
         let cart = [];
-        let deliveryInfo = { name: '', phone: '', address: '', fee: 40 }; // จำลองค่าส่งเริ่มต้น 40 บาท
+        let deliveryInfo = { name: '', phone: '', address: '', fee: 40 };
+        let isStoreOpen = true;
 
-        // โหลดเมนู (ใช้ราคาเดียวกัน แต่ระบบจริงสามารถบวกราคาเดลิเวอรี่เพิ่มในฐานข้อมูลได้)
+        // 1. ตรวจสอบสถานะเปิด/ปิดร้านแบบ Real-time จาก Firebase
+        onSnapshot(doc(db, "settings", "shop"), (docSnap) => {
+            if (docSnap.exists()) {
+                isStoreOpen = docSnap.data().deliveryOpen ?? true;
+                updateStoreStatusUI(isStoreOpen);
+            }
+        });
+
+        function updateStoreStatusUI(isOpen) {
+            const banner = document.getElementById('store-closed-banner');
+            const cartBar = document.getElementById('cart-bar');
+            
+            if (!isOpen) {
+                banner.classList.remove('hidden');
+                cartBar.classList.add('translate-y-full'); // ซ่อนตะกร้า
+            } else {
+                banner.classList.add('hidden');
+            }
+            fetchMenus(); // โหลดเมนูใหม่เพื่อให้ปุ่มกดถูกปิดใช้งาน/เป็นสีเทา
+        }
+
+        // 2. โหลดเมนู (ถ้าปิดร้าน เมนูจะเปลี่ยนเป็นสีเทาและกดสั่งไม่ได้)
         async function fetchMenus() {
             const container = document.getElementById('menu-container');
             const q = query(collection(db, "menu_items"), orderBy("created_at", "desc"));
             const querySnapshot = await getDocs(q);
             container.innerHTML = '';
 
-            querySnapshot.forEach((doc) => {
-                const item = doc.data();
+            querySnapshot.forEach((docSnap) => {
+                const item = docSnap.data();
+                
+                // กำหนดสไตล์เมื่อร้านปิด (สีเทา โปร่งแสง และปุ่มกดไม่ได้)
+                const opacityStyle = !isStoreOpen ? 'opacity-50 grayscale bg-slate-100' : 'bg-white';
+                const buttonHTML = !isStoreOpen 
+                    ? `<button disabled class="px-4 py-1.5 rounded-full bg-slate-200 text-slate-400 font-medium text-sm cursor-not-allowed">ปิดรับออเดอร์</button>`
+                    : `<button onclick="window.addToCart('${item.name}', ${item.price})" class="px-4 py-1.5 rounded-full bg-rose-50 text-rose-600 font-medium text-sm hover:bg-rose-100">เพิ่ม</button>`;
+
                 container.innerHTML += `
-                    <div class="bg-white rounded-2xl p-3 flex gap-4 mb-4 shadow-sm border border-rose-50">
+                    <div class="${opacityStyle} rounded-2xl p-3 flex gap-4 mb-4 shadow-sm border border-rose-50 transition-all">
                         <img src="${item.img}" class="w-24 h-24 rounded-xl object-cover">
                         <div class="flex-1 flex flex-col justify-between py-1">
                             <div><h3 class="font-bold text-slate-800">${item.name}</h3></div>
                             <div class="flex justify-between items-center mt-2">
                                 <span class="font-bold text-rose-600">฿${item.price}</span>
-                                <button onclick="window.addToCart('${item.name}', ${item.price})" class="px-4 py-1.5 rounded-full bg-rose-50 text-rose-600 font-medium text-sm">
-                                    เพิ่ม
-                                </button>
+                                ${buttonHTML}
                             </div>
                         </div>
                     </div>
@@ -119,6 +154,10 @@
         }
 
         window.addToCart = (name, price) => {
+            if (!isStoreOpen) {
+                alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่ชั่วคราว');
+                return;
+            }
             const existing = cart.find(i => i.name === name);
             if (existing) existing.qty += 1;
             else cart.push({ name, price, qty: 1 });
@@ -126,6 +165,7 @@
         };
 
         function updateCartUI() {
+            if (!isStoreOpen) return;
             const bar = document.getElementById('cart-bar');
             const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
             const total = subtotal + deliveryInfo.fee;
@@ -137,14 +177,12 @@
             cart.length > 0 ? bar.classList.remove('translate-y-full') : bar.classList.add('translate-y-full');
         }
 
-        // ระบบจัดการที่อยู่
         window.openAddressModal = () => document.getElementById('address-modal').classList.remove('hidden');
         window.saveAddress = () => {
             const name = document.getElementById('cust-name').value;
             const phone = document.getElementById('cust-phone').value;
             const address = document.getElementById('cust-address').value;
             if(!name || !phone || !address) return alert('กรอกข้อมูลให้ครบถ้วน');
-            
             deliveryInfo.name = name;
             deliveryInfo.phone = phone;
             deliveryInfo.address = address;
@@ -152,17 +190,17 @@
             document.getElementById('address-modal').classList.add('hidden');
         };
 
-        // ระบบชำระเงินและส่งออเดอร์
         window.openPaymentModal = () => {
+            if (!isStoreOpen) return alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่แล้ว');
             if(!deliveryInfo.address) return openAddressModal();
             document.getElementById('payment-modal').classList.remove('hidden');
         };
         window.closePaymentModal = () => document.getElementById('payment-modal').classList.add('hidden');
 
         window.simulatePaymentSuccess = async () => {
+            if (!isStoreOpen) return alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่แล้ว');
             document.getElementById('payment-modal').classList.add('hidden');
             const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
-            
             try {
                 await addDoc(collection(db, "orders"), {
                     type: "delivery",
@@ -174,7 +212,7 @@
                     status: "รอยืนยัน",
                     timestamp: serverTimestamp()
                 });
-                alert('ชำระเงินสำเร็จ! ออเดอร์ถูกส่งไปยังร้านค้าแล้ว\nสามารถติดตามสถานะในหน้าประวัติการสั่งซื้อได้ครับ');
+                alert('ชำระเงินสำเร็จ! ออเดอร์ถูกส่งไปยังร้านค้าแล้ว');
                 cart = [];
                 updateCartUI();
             } catch (e) {
@@ -182,9 +220,7 @@
             }
         };
 
-        // เรียกที่อยู่ Modal ตอนเปิดเว็บครั้งแรกถ้ายังไม่มีข้อมูล
         setTimeout(() => openAddressModal(), 500);
-        fetchMenus();
     </script>
 </body>
 </html>
