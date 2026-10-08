@@ -8,13 +8,16 @@
     <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
-    <!-- ติดตั้ง แผนที่ Leaflet ฟรี API -->
+    <!-- เพิ่ม Leaflet CSS & JS สำหรับแผนที่ -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- เพิ่ม JsBarcode สำหรับหน้า Tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.0/dist/JsBarcode.all.min.js"></script>
 
     <style>
         body { font-family: 'Prompt', sans-serif; background-color: #fff1f2; } 
         .hide-scrollbar::-webkit-scrollbar { display: none; }
+        /* ปรับ z-index แผนที่ให้อยู่ใต้ modal elements อื่นๆ */
         #map { z-index: 10; }
     </style>
 </head>
@@ -60,6 +63,10 @@
     <div id="cart-bar" class="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_15px_rgba(0,0,0,0.1)] rounded-t-3xl transition-transform duration-300 transform translate-y-full z-30">
         <div class="max-w-md mx-auto px-6 py-4">
             
+            <div id="cart-items-preview" class="mb-3 max-h-32 overflow-y-auto text-sm text-slate-600 border-b pb-2 hidden">
+                <!-- รายการอาหารในตะกร้า -->
+            </div>
+
             <!-- ส่วนลดคูปอง -->
             <div class="flex gap-2 mb-3">
                 <input type="text" id="coupon-input" placeholder="พิมพ์โค้ดส่วนลดที่นี่..." class="w-full p-2 border border-slate-200 rounded-lg text-sm uppercase outline-none focus:border-rose-500 bg-slate-50">
@@ -75,8 +82,8 @@
                 <span class="font-medium">- ฿<span id="cart-discount">0</span></span>
             </div>
             <div class="flex justify-between items-center mb-3 text-sm text-rose-500">
-                <span>ค่าจัดส่ง <span id="delivery-dist-text" class="text-xs"></span></span>
-                <span class="font-medium">+ ฿<span id="cart-delivery">0</span></span>
+                <span>ค่าจัดส่ง <span id="delivery-distance-text" class="text-xs text-rose-400"></span></span>
+                <span class="font-medium" id="cart-delivery-display">+ ฿0</span>
             </div>
             <div class="flex justify-between items-center pt-3 border-t border-slate-100">
                 <div>
@@ -90,48 +97,167 @@
         </div>
     </div>
 
-    <!-- Modal กรอกที่อยู่ และ ปักหมุดแผนที่ -->
-    <div id="address-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end">
+    <!-- Modal เลือกตัวเลือกเสริมอาหาร (Modifiers) -->
+    <div id="modifier-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end">
         <div class="bg-white w-full max-w-md mx-auto rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4">
-                <h3 class="font-bold text-lg">ปักหมุดจุดจัดส่ง</h3>
-                <button onclick="document.getElementById('address-modal').classList.add('hidden')" class="text-slate-400 text-xl"><i class="fas fa-times"></i></button>
+                <h3 class="font-bold text-lg" id="mod-item-name">ชื่อเมนู</h3>
+                <button onclick="closeModifierModal()" class="text-slate-400 text-xl"><i class="fas fa-times"></i></button>
             </div>
             
-            <div class="relative mb-4">
+            <div class="mb-4">
+                <p class="font-medium text-sm text-slate-700 mb-2">ระดับความเผ็ด (เลือกได้ 1 อย่าง)</p>
+                <div class="flex gap-2">
+                    <label class="flex-1 bg-slate-50 border p-2 rounded-lg text-center text-sm cursor-pointer hover:bg-rose-50 hover:border-rose-300">
+                        <input type="radio" name="spice_level" value="ไม่เผ็ด" class="hidden peer" checked>
+                        <span class="peer-checked:text-rose-600 peer-checked:font-bold">ไม่เผ็ด</span>
+                    </label>
+                    <label class="flex-1 bg-slate-50 border p-2 rounded-lg text-center text-sm cursor-pointer hover:bg-rose-50 hover:border-rose-300">
+                        <input type="radio" name="spice_level" value="เผ็ดน้อย" class="hidden peer">
+                        <span class="peer-checked:text-rose-600 peer-checked:font-bold">เผ็ดน้อย</span>
+                    </label>
+                    <label class="flex-1 bg-slate-50 border p-2 rounded-lg text-center text-sm cursor-pointer hover:bg-rose-50 hover:border-rose-300">
+                        <input type="radio" name="spice_level" value="เผ็ดปกติ" class="hidden peer">
+                        <span class="peer-checked:text-rose-600 peer-checked:font-bold">เผ็ดปกติ</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <p class="font-medium text-sm text-slate-700 mb-2">ตัวเลือกเพิ่มเติม</p>
+                <label class="flex items-center gap-2 mb-2 p-2 border rounded-lg cursor-pointer">
+                    <input type="checkbox" id="mod-nomsg" value="ไม่ใส่ผงชูรส" class="w-4 h-4 text-rose-600">
+                    <span class="text-sm">ไม่ใส่ผงชูรส</span>
+                </label>
+                <label class="flex items-center gap-2 mb-2 p-2 border rounded-lg cursor-pointer">
+                    <input type="checkbox" id="mod-topping1" value="ไข่ดาว (+10฿)" data-price="10" class="w-4 h-4 text-rose-600 topping-checkbox">
+                    <span class="text-sm flex-1">เพิ่มไข่ดาว</span>
+                    <span class="text-sm font-medium">+฿10</span>
+                </label>
+            </div>
+
+            <input type="hidden" id="mod-item-id">
+            <input type="hidden" id="mod-item-base-price">
+            <button onclick="confirmAddToCart()" class="w-full bg-rose-600 text-white py-3 rounded-xl font-bold shadow-md shadow-rose-200">
+                เพิ่มลงตะกร้า - ฿<span id="mod-total-price">0</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal กรอกที่อยู่ + แผนที่ GPS -->
+    <div id="address-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end">
+        <div class="bg-white w-full max-w-md mx-auto rounded-t-3xl p-6 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="font-bold text-lg">ปักหมุดข้อมูลการจัดส่ง</h3>
+                <button onclick="document.getElementById('address-modal').classList.add('hidden')" class="text-slate-400"><i class="fas fa-times text-xl"></i></button>
+            </div>
+            
+            <!-- แผนที่ -->
+            <div class="relative mb-3">
                 <div id="map" class="h-48 w-full rounded-xl border border-slate-200"></div>
-                <button onclick="getCurrentLocation()" class="absolute bottom-4 right-4 z-[20] bg-white text-rose-600 p-2 rounded-full shadow-lg border border-rose-100 hover:bg-rose-50">
+                <button onclick="getCurrentLocation()" class="absolute bottom-4 right-4 z-[20] bg-white text-rose-600 p-2 rounded-full shadow-lg border border-rose-100 hover:bg-rose-50 transition">
                     <i class="fas fa-crosshairs text-lg"></i>
                 </button>
             </div>
 
-            <div class="flex justify-between text-sm bg-rose-50 p-2 rounded-lg mb-4 text-slate-700">
-                <span>ระยะทาง: <span id="modal-dist-display" class="font-bold">0</span> กม.</span>
-                <span>ค่าส่ง: <span id="modal-fee-display" class="font-bold text-rose-600">0</span> บาท</span>
+            <div class="flex justify-between items-center bg-rose-50 p-3 rounded-lg mb-4 text-sm border border-rose-100">
+                <span class="text-slate-600"><i class="fas fa-route text-rose-500 mr-1"></i> ระยะทาง: <span id="dist-display" class="font-bold text-slate-800">0</span> กม.</span>
+                <span class="text-slate-600">ค่าส่ง: <span id="fee-display" class="font-bold text-rose-600">0</span> บาท</span>
             </div>
+            
+            <p id="radius-warning" class="text-xs text-rose-600 font-bold mb-3 hidden"><i class="fas fa-exclamation-circle"></i> ขออภัย พิกัดนี้อยู่นอกระยะการจัดส่งที่ร้านกำหนด</p>
 
             <input type="text" id="cust-name" placeholder="ชื่อ-นามสกุล" class="w-full p-3 border rounded-xl mb-3 outline-none focus:border-rose-500 text-sm">
             <input type="tel" id="cust-phone" placeholder="เบอร์โทรศัพท์" class="w-full p-3 border rounded-xl mb-3 outline-none focus:border-rose-500 text-sm">
             <textarea id="cust-address" placeholder="บ้านเลขที่, ซอย, ถนน หรือจุดสังเกตเด่นชัด" rows="2" class="w-full p-3 border rounded-xl mb-4 outline-none focus:border-rose-500 text-sm"></textarea>
             
-            <button onclick="saveAddress()" class="w-full bg-slate-800 text-white py-3 rounded-xl font-bold">ยืนยันพิกัดและที่อยู่</button>
+            <button onclick="saveAddress()" id="btn-save-address" class="w-full bg-slate-800 text-white py-3 rounded-xl font-bold shadow-md transition-all">ยืนยันพิกัดและที่อยู่</button>
         </div>
     </div>
 
     <!-- Modal ชำระเงิน -->
     <div id="payment-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center">
-        <div class="bg-white w-11/12 max-w-sm rounded-3xl p-6 text-center">
-            <h3 class="font-bold text-lg mb-2">ยืนยันคำสั่งซื้อ</h3>
-            <p class="text-sm text-slate-500 mb-4">ระบบจะส่งออเดอร์พร้อมพิกัดจัดส่งไปยังร้านค้า</p>
-            <button onclick="simulatePaymentSuccess()" class="w-full bg-rose-600 text-white py-3 rounded-xl font-bold shadow-md">ยืนยันการสั่งซื้อ</button>
-            <button onclick="closePaymentModal()" class="w-full text-slate-500 py-3 mt-2 text-sm font-medium">ยกเลิก</button>
+        <div class="bg-white w-11/12 max-w-sm rounded-3xl p-6">
+            <h3 class="font-bold text-lg mb-4 text-center">เลือกวิธีชำระเงิน</h3>
+            
+            <div class="flex gap-2 mb-4 bg-slate-100 p-1 rounded-xl">
+                <button id="tab-transfer" onclick="switchPaymentTab('transfer')" class="flex-1 py-2 rounded-lg text-sm font-bold bg-white shadow-sm text-rose-600">โอนเงิน/สแกน QR</button>
+                <button id="tab-cod" onclick="switchPaymentTab('cod')" class="flex-1 py-2 rounded-lg text-sm font-bold text-slate-500">เงินสดปลายทาง</button>
+            </div>
+
+            <div id="payment-content-transfer">
+                <div class="text-center mb-4">
+                    <p class="text-sm text-slate-500 mb-2">สแกน QR โอนเงินจำนวน <span class="font-bold text-rose-600" id="pay-amount-display"></span> บาท</p>
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=PromptPay1234567890" class="mx-auto w-40 h-40 border p-2 rounded-xl bg-white mb-2">
+                    <p class="text-xs text-slate-400">พร้อมเพย์: 081-234-5678 (ร้าน Terra Bite)</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">แนบสลีปโอนเงิน (จำลอง)</label>
+                    <input type="file" id="slip-upload" accept="image/*" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-rose-50 file:text-rose-700 hover:file:bg-rose-100 border p-1 rounded-xl mb-4">
+                </div>
+            </div>
+
+            <div id="payment-content-cod" class="hidden text-center py-6">
+                <i class="fas fa-motorcycle text-4xl text-slate-300 mb-3"></i>
+                <p class="text-sm text-slate-600">เตรียมเงินสด <span class="font-bold text-rose-600" id="pay-amount-cod"></span> บาท<br>ชำระกับไรเดอร์เมื่อได้รับอาหาร</p>
+            </div>
+
+            <button onclick="submitOrder()" id="btn-submit-order" class="w-full bg-rose-600 text-white py-3 rounded-xl font-bold shadow-md flex justify-center items-center gap-2">
+                ยืนยันคำสั่งซื้อ
+            </button>
+            <button onclick="closePaymentModal()" class="w-full text-slate-500 py-3 mt-1 text-sm font-medium">ยกเลิก</button>
         </div>
     </div>
 
-    <!-- SCRIPT -->
+    <!-- Modal ติดตามสถานะ (Live Tracking) -->
+    <div id="tracking-modal" class="fixed inset-0 bg-slate-50 z-50 hidden flex flex-col">
+        <div class="bg-rose-600 text-white p-4 shadow-md sticky top-0 rounded-b-2xl flex justify-between items-center">
+            <h2 class="font-bold text-lg">สถานะออเดอร์</h2>
+            <button onclick="document.getElementById('tracking-modal').classList.add('hidden')" class="text-white opacity-80"><i class="fas fa-times text-xl"></i></button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-6">
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-4 text-center">
+                <canvas id="order-barcode" class="mx-auto h-16 w-full max-w-[200px]"></canvas>
+                <p class="text-xs text-slate-500 mt-2">หมายเลขออเดอร์: <span id="track-order-id" class="font-mono font-bold"></span></p>
+            </div>
+
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 relative">
+                <div class="absolute left-8 top-10 bottom-10 w-0.5 bg-slate-100"></div>
+                
+                <div class="flex items-start gap-4 mb-6 relative z-10">
+                    <div id="status-icon-รอยืนยัน" class="w-8 h-8 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center border-4 border-white shadow-sm"><i class="fas fa-clock text-xs"></i></div>
+                    <div><h4 class="font-bold text-slate-800 text-sm">กำลังรอยืนยัน</h4><p class="text-xs text-slate-500">ร้านกำลังตรวจสอบคำสั่งซื้อ</p></div>
+                </div>
+                <div class="flex items-start gap-4 mb-6 relative z-10">
+                    <div id="status-icon-กำลังทำอาหาร" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center border-4 border-white"><i class="fas fa-utensils text-xs"></i></div>
+                    <div><h4 class="font-bold text-slate-800 text-sm">กำลังทำอาหาร</h4><p class="text-xs text-slate-500">อาหารของคุณกำลังปรุงอย่างพิถีพิถัน</p></div>
+                </div>
+                <div class="flex items-start gap-4 mb-6 relative z-10">
+                    <div id="status-icon-รอไรเดอร์มารับ" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center border-4 border-white"><i class="fas fa-box text-xs"></i></div>
+                    <div><h4 class="font-bold text-slate-800 text-sm">รอไรเดอร์มารับ</h4><p class="text-xs text-slate-500">อาหารเสร็จแล้ว รอผู้จัดส่ง</p></div>
+                </div>
+                <div class="flex items-start gap-4 mb-6 relative z-10">
+                    <div id="status-icon-กำลังจัดส่ง" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center border-4 border-white"><i class="fas fa-motorcycle text-xs"></i></div>
+                    <div><h4 class="font-bold text-slate-800 text-sm">ไรเดอร์กำลังไปส่ง</h4><p class="text-xs text-slate-500" id="track-rider-info">อาหารกำลังเดินทางไปหาคุณ</p></div>
+                </div>
+                <div class="flex items-start gap-4 relative z-10">
+                    <div id="status-icon-เสร็จสิ้น" class="w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center border-4 border-white"><i class="fas fa-check text-xs"></i></div>
+                    <div><h4 class="font-bold text-slate-800 text-sm">จัดส่งสำเร็จ</h4><p class="text-xs text-slate-500">ทานให้อร่อยนะคะ!</p></div>
+                </div>
+            </div>
+            
+            <button onclick="location.reload()" class="w-full bg-slate-800 text-white py-3 rounded-xl font-bold shadow-md mt-6">
+                กลับสู่หน้าแรก / สั่งใหม่
+            </button>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- SCRIPT (Delivery Customer Page) -->
+    <!-- ========================================== -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, serverTimestamp, query, orderBy, doc, onSnapshot, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDoc, getDocs, serverTimestamp, query, orderBy, doc, onSnapshot, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAsgcKhn0V1lYjF754aypxZv5C-PmHCvno",
@@ -144,13 +270,14 @@
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
 
-        // --- ตั้งค่าพิกัดร้านค้า ---
-        const STORE_LAT = 13.7563; 
-        const STORE_LNG = 100.5018; 
-        const DELIVERY_RATE_PER_KM = 10; // ค่าส่งกิโลเมตรละ 10 บาท
+        // --- ตัวแปรสำหรับตั้งค่าร้านค้า (ดึงจาก Firebase อัตโนมัติ) ---
+        let shopLat = 13.7563; 
+        let shopLng = 100.5018; 
+        let deliveryRatePerKm = 10;
+        let deliveryMaxRadius = 15;
 
         let cart = [];
-        let deliveryInfo = { name: '', phone: '', address: '', lat: null, lng: null, distance: 0, fee: 0 };
+        let deliveryInfo = { name: '', phone: '', address: '', fee: 0, distance: 0, lat: null, lng: null };
         let isStoreOpen = true;
         let allMenus = [];
         let allCategories = [];
@@ -158,8 +285,29 @@
         let allCoupons = [];
         let appliedDiscount = 0;
         let appliedCouponCode = '';
-        let map, marker;
+        let paymentMethod = 'transfer'; // transfer or cod
 
+        // ตัวแปรแผนที่ Leaflet
+        let map;
+        let marker;
+
+        // 1. ดึงการตั้งค่าพิกัดและค่าส่งจากระบบหลังบ้าน (Real-time)
+        onSnapshot(doc(db, "settings", "delivery"), (docSnap) => {
+            if (docSnap.exists()) {
+                const data = docSnap.data();
+                shopLat = data.lat || 13.7563;
+                shopLng = data.lng || 100.5018;
+                deliveryRatePerKm = data.fee || 10;
+                deliveryMaxRadius = data.radius || 15;
+                
+                // ถ้าระบุที่อยู่แล้ว ให้คำนวณระยะทางใหม่เผื่อร้านเปลี่ยนพิกัด/เรทราคา
+                if (deliveryInfo.lat && deliveryInfo.lng) {
+                    calculateAndDisplayDistance(deliveryInfo.lat, deliveryInfo.lng);
+                }
+            }
+        });
+
+        // ฟังก์ชันตรวจเช็คคูปอง
         const isCouponValid = (c) => {
             if(c.active === false) return false;
             const now = new Date();
@@ -187,16 +335,24 @@
             wrapper.classList.remove('hidden');
             container.innerHTML = visibleCoupons.map(c => `
                 <div class="bg-gradient-to-r from-rose-500 to-orange-500 rounded-xl p-3 text-white min-w-[200px] flex-shrink-0 shadow-md relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 w-12 h-12 bg-white/20 rounded-full"></div>
+                    <div class="absolute -right-4 -bottom-4 w-16 h-16 bg-white/10 rounded-full"></div>
                     <h4 class="font-bold text-lg mb-0 tracking-wide">${c.code}</h4>
                     <p class="text-[11px] text-rose-50 mb-3 opacity-90">ส่วนลด ${c.value}${c.type === 'percent' ? '%' : ' บาท'}</p>
-                    <button onclick="autoApplyCoupon('${c.code}')" class="bg-white text-rose-600 text-xs font-bold px-3 py-1.5 rounded-lg w-full hover:bg-slate-50 transition-colors shadow-sm relative z-10">ใช้เลย</button>
+                    <button onclick="autoApplyCoupon('${c.code}')" class="bg-white text-rose-600 text-xs font-bold px-3 py-1.5 rounded-lg w-full hover:bg-slate-50 transition-colors shadow-sm relative z-10">
+                        เก็บคูปอง / ใช้เลย
+                    </button>
                 </div>
             `).join('');
         };
 
         window.autoApplyCoupon = (code) => {
             document.getElementById('coupon-input').value = code;
-            if (cart.length > 0) applyCoupon();
+            if (cart.length > 0) {
+                applyCoupon();
+            } else {
+                alert(`เก็บโค้ด ${code} สำเร็จ! กรุณาเลือกเมนูอาหารลงตะกร้าก่อนระบบจึงจะคำนวณส่วนลดให้`);
+            }
         };
 
         onSnapshot(doc(db, "settings", "shop"), (docSnap) => {
@@ -209,6 +365,7 @@
         function updateStoreStatusUI(isOpen) {
             const banner = document.getElementById('store-closed-banner');
             const cartBar = document.getElementById('cart-bar');
+            
             if (!isOpen) {
                 banner.classList.remove('hidden');
                 cartBar.classList.add('translate-y-full');
@@ -227,7 +384,9 @@
                 const item = { id: docSnap.id, ...docSnap.data() };
                 allMenus.push(item);
                 const cat = item.category || 'ไม่มีหมวดหมู่';
-                if(!allCategories.includes(cat)) allCategories.push(cat);
+                if(!allCategories.includes(cat)) {
+                    allCategories.push(cat);
+                }
             });
             window.renderCategoryFilters();
             window.renderMenus();
@@ -266,19 +425,24 @@
 
             filtered.forEach(item => {
                 const isOutOfStock = item.stock !== undefined && item.stock !== null && item.stock <= 0;
-                const opacityStyle = (!isStoreOpen || isOutOfStock) ? 'opacity-50 grayscale bg-slate-100' : 'bg-white';
+                const opacityStyle = (!isStoreOpen || isOutOfStock) ? 'opacity-50 grayscale-[50%] bg-slate-100' : 'bg-white';
                 
                 let buttonHTML = '';
-                if (!isStoreOpen) buttonHTML = `<button disabled class="px-4 py-1.5 rounded-full bg-slate-200 text-slate-400 font-medium text-sm">ปิดรับออเดอร์</button>`;
-                else if (isOutOfStock) buttonHTML = `<button disabled class="px-4 py-1.5 rounded-full bg-slate-200 text-rose-500 font-bold text-sm">สินค้าหมด</button>`;
-                else buttonHTML = `<button onclick="window.addToCart('${item.id}', '${item.name}', ${item.price})" class="px-4 py-1.5 rounded-full bg-rose-50 text-rose-600 font-medium text-sm hover:bg-rose-100">เพิ่ม</button>`;
+                if (!isStoreOpen) {
+                    buttonHTML = `<button disabled class="px-4 py-1.5 rounded-full bg-slate-200 text-slate-400 font-medium text-sm cursor-not-allowed">ปิดรับออเดอร์</button>`;
+                } else if (isOutOfStock) {
+                    buttonHTML = `<button disabled class="px-4 py-1.5 rounded-full bg-slate-200 text-rose-500 font-bold text-sm cursor-not-allowed">สินค้าหมด</button>`;
+                } else {
+                    buttonHTML = `<button onclick="window.openModifierModal('${item.id}', '${item.name}', ${item.price})" class="px-4 py-1.5 rounded-full bg-rose-50 text-rose-600 font-medium text-sm hover:bg-rose-100">เลือก</button>`;
+                }
 
                 container.innerHTML += `
-                    <div class="${opacityStyle} rounded-2xl p-3 flex gap-4 mb-4 shadow-sm border border-rose-50">
+                    <div class="${opacityStyle} rounded-2xl p-3 flex gap-4 mb-4 shadow-sm border border-rose-50 transition-all">
                         <img src="${item.img || 'https://via.placeholder.com/150'}" class="w-24 h-24 rounded-xl object-cover">
                         <div class="flex-1 flex flex-col justify-between py-1">
                             <div>
                                 <h3 class="font-bold text-slate-800">${item.name}</h3>
+                                ${isOutOfStock && isStoreOpen ? `<p class="text-[10px] text-rose-500 mt-1 font-bold"><i class="fas fa-times-circle"></i> สินค้าหมด</p>` : ''}
                             </div>
                             <div class="flex justify-between items-center mt-2">
                                 <span class="font-bold text-rose-600">฿${item.price}</span>
@@ -290,14 +454,68 @@
             });
         };
 
-        window.addToCart = (id, name, price) => {
-            if (!isStoreOpen) return;
-            const existing = cart.find(i => i.id === id);
-            if (existing) existing.qty += 1;
-            else cart.push({ id, name, price, qty: 1 });
+        // ---------------- ระบบ Modifiers ----------------
+        window.openModifierModal = (id, name, price) => {
+            if (!isStoreOpen) return alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่ชั่วคราว');
+            document.getElementById('mod-item-id').value = id;
+            document.getElementById('mod-item-name').innerText = name;
+            document.getElementById('mod-item-base-price').value = price;
             
-            if (document.getElementById('coupon-input').value.trim() !== '') applyCoupon(false);
-            else updateCartUI();
+            // Reset modal values
+            document.querySelector('input[name="spice_level"][value="ไม่เผ็ด"]').checked = true;
+            document.getElementById('mod-nomsg').checked = false;
+            document.querySelectorAll('.topping-checkbox').forEach(cb => cb.checked = false);
+            
+            updateModPrice();
+            document.getElementById('modifier-modal').classList.remove('hidden');
+        };
+
+        window.closeModifierModal = () => document.getElementById('modifier-modal').classList.add('hidden');
+
+        document.querySelectorAll('.topping-checkbox').forEach(cb => {
+            cb.addEventListener('change', updateModPrice);
+        });
+
+        function updateModPrice() {
+            let base = parseFloat(document.getElementById('mod-item-base-price').value);
+            document.querySelectorAll('.topping-checkbox:checked').forEach(cb => {
+                base += parseFloat(cb.dataset.price);
+            });
+            document.getElementById('mod-total-price').innerText = base.toFixed(0);
+        }
+
+        window.confirmAddToCart = () => {
+            const id = document.getElementById('mod-item-id').value;
+            const name = document.getElementById('mod-item-name').innerText;
+            const basePrice = parseFloat(document.getElementById('mod-item-base-price').value);
+            
+            const spice = document.querySelector('input[name="spice_level"]:checked').value;
+            const noMsg = document.getElementById('mod-nomsg').checked ? 'ไม่ใส่ผงชูรส' : '';
+            
+            let toppings = [];
+            let addonPrice = 0;
+            document.querySelectorAll('.topping-checkbox:checked').forEach(cb => {
+                toppings.push(cb.value);
+                addonPrice += parseFloat(cb.dataset.price);
+            });
+
+            const finalPrice = basePrice + addonPrice;
+            const optionsStr = [spice, noMsg, ...toppings].filter(x => x).join(', ');
+
+            const existingIdx = cart.findIndex(i => i.id === id && i.options === optionsStr);
+            if (existingIdx >= 0) {
+                cart[existingIdx].qty += 1;
+            } else {
+                cart.push({ id, name, price: finalPrice, qty: 1, options: optionsStr });
+            }
+            
+            closeModifierModal();
+            
+            if (document.getElementById('coupon-input').value.trim() !== '') {
+                applyCoupon(false);
+            } else {
+                updateCartUI();
+            }
         };
 
         window.applyCoupon = (showAlert = true) => {
@@ -306,23 +524,23 @@
             const coupon = allCoupons.find(c => c.code === code);
             
             if(!coupon || !isCouponValid(coupon)) {
-                if(showAlert) alert('คูปองไม่ถูกต้อง หรือสิทธิ์เต็มแล้ว');
+                if(showAlert) alert('คูปองไม่ถูกต้อง หมดเวลาโปรโมชั่น หรือสิทธิ์เต็มแล้ว');
                 document.getElementById('coupon-input').value = '';
                 appliedCouponCode = '';
                 updateCartUI();
                 return;
             }
-
             const applicableItemsInCart = cart.filter(item => coupon.applicable_items.includes(item.id));
             if(applicableItemsInCart.length === 0) {
-                if(showAlert) alert('ไม่สามารถใช้คูปองนี้กับเมนูในตะกร้าได้');
+                if(showAlert) alert('คูปองนี้ไม่สามารถใช้ร่วมกับเมนูในตะกร้าของคุณได้');
                 return;
             }
-
             let subtotalForDiscount = applicableItemsInCart.reduce((sum, i) => sum + (i.price * i.qty), 0);
-            if (coupon.type === 'amount') appliedDiscount = Math.min(coupon.value, subtotalForDiscount);
-            else appliedDiscount = subtotalForDiscount * (coupon.value / 100);
-            
+            if (coupon.type === 'amount') {
+                appliedDiscount = Math.min(coupon.value, subtotalForDiscount);
+            } else {
+                appliedDiscount = subtotalForDiscount * (coupon.value / 100);
+            }
             appliedCouponCode = code;
             if(showAlert) alert('ใช้คูปองส่วนลดสำเร็จ!');
             updateCartUI();
@@ -331,8 +549,25 @@
         function updateCartUI() {
             if (!isStoreOpen) return;
             const bar = document.getElementById('cart-bar');
+            
             const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
             
+            const cartPreview = document.getElementById('cart-items-preview');
+            if (cart.length > 0) {
+                cartPreview.classList.remove('hidden');
+                cartPreview.innerHTML = cart.map(item => `
+                    <div class="flex justify-between items-start mb-2">
+                        <div>
+                            <p class="font-medium text-slate-800">${item.qty}x ${item.name}</p>
+                            <p class="text-[11px] text-slate-500">${item.options}</p>
+                        </div>
+                        <p class="font-medium text-slate-700">฿${(item.price * item.qty).toFixed(0)}</p>
+                    </div>
+                `).join('');
+            } else {
+                cartPreview.classList.add('hidden');
+            }
+
             if(appliedCouponCode) {
                 const coupon = allCoupons.find(c => c.code === appliedCouponCode);
                 if(coupon && isCouponValid(coupon)) {
@@ -340,14 +575,27 @@
                     let subtotalForDiscount = applicableItems.reduce((sum, i) => sum + (i.price * i.qty), 0);
                     appliedDiscount = coupon.type === 'amount' ? Math.min(coupon.value, subtotalForDiscount) : subtotalForDiscount * (coupon.value / 100);
                 } else {
-                    appliedDiscount = 0; appliedCouponCode = '';
+                    appliedDiscount = 0;
+                    appliedCouponCode = '';
                 }
+            }
+
+            let deliveryFeeText = '+ ฿0';
+            if (cart.length > 0 && deliveryInfo.lat) {
+                if (deliveryInfo.distance > 0) {
+                    deliveryInfo.fee = Math.ceil(deliveryInfo.distance * deliveryRatePerKm);
+                    deliveryFeeText = `+ ฿${deliveryInfo.fee}`;
+                    document.getElementById('delivery-distance-text').innerText = `(${deliveryInfo.distance} กม.)`;
+                }
+            } else {
+                deliveryInfo.fee = 0;
+                document.getElementById('delivery-distance-text').innerText = `(รอระบุที่อยู่)`;
             }
 
             const total = subtotal - appliedDiscount + deliveryInfo.fee;
             
-            document.getElementById('cart-subtotal').innerText = subtotal;
-            document.getElementById('cart-delivery').innerText = cart.length > 0 ? deliveryInfo.fee : 0;
+            document.getElementById('cart-subtotal').innerText = subtotal.toFixed(0);
+            document.getElementById('cart-delivery-display').innerText = deliveryFeeText;
             
             if(appliedDiscount > 0) {
                 document.getElementById('discount-row').classList.remove('hidden');
@@ -359,131 +607,249 @@
             }
 
             document.getElementById('cart-total').innerText = cart.length > 0 ? (total > 0 ? total.toFixed(2) : '0') : 0;
+            
             cart.length > 0 ? bar.classList.remove('translate-y-full') : bar.classList.add('translate-y-full');
         }
 
-        // --- ระบบแผนที่ GPS (Leaflet) ---
+        // ---------------- ระบบที่อยู่และแผนที่ GPS (Leaflet) ----------------
         window.openAddressModal = () => {
             document.getElementById('address-modal').classList.remove('hidden');
             if(!map) {
-                setTimeout(() => {
-                    map = L.map('map').setView([STORE_LAT, STORE_LNG], 13);
-                    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
-                    marker = L.marker([STORE_LAT, STORE_LNG], {draggable: true}).addTo(map);
-                    
-                    marker.on('dragend', function(e) {
-                        calculateDistance(marker.getLatLng().lat, marker.getLatLng().lng);
-                    });
-                }, 200);
+                setTimeout(initMap, 200); 
+            } else {
+                // หากเคยโหลดแล้วให้ตั้งจุดเริ่มต้นที่ตำแหน่งร้านใหม่ เผื่อมีการอัปเดตจากหลังบ้าน
+                map.setView([shopLat, shopLng], 13);
             }
         };
 
+        function initMap() {
+            // ดึงพิกัดร้านค้าปัจจุบันมาเป็นจุดเริ่มต้นแผนที่
+            map = L.map('map').setView([shopLat, shopLng], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+
+            marker = L.marker([shopLat, shopLng], {draggable: true}).addTo(map);
+            
+            marker.on('dragend', function(e) {
+                const pos = marker.getLatLng();
+                calculateAndDisplayDistance(pos.lat, pos.lng);
+            });
+        }
+
         window.getCurrentLocation = () => {
             if (navigator.geolocation) {
+                const btn = document.querySelector('#map + button');
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin text-lg"></i>';
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         const lat = position.coords.latitude;
                         const lng = position.coords.longitude;
                         map.setView([lat, lng], 15);
                         marker.setLatLng([lat, lng]);
-                        calculateDistance(lat, lng);
+                        calculateAndDisplayDistance(lat, lng);
+                        btn.innerHTML = '<i class="fas fa-crosshairs text-lg"></i>';
                     },
-                    (error) => alert('ไม่สามารถดึงตำแหน่งได้ กรุณาเลื่อนหมุดเองบนแผนที่ (หรือตรวจสอบว่าใช้งานผ่าน HTTPS และเปิดสิทธิ์ GPS แล้ว)'),
+                    (error) => {
+                        alert('ไม่สามารถดึงตำแหน่งได้ กรุณาเปิดใช้งาน Location Services บนอุปกรณ์ หรือเลื่อนหมุดเองบนแผนที่');
+                        btn.innerHTML = '<i class="fas fa-crosshairs text-lg"></i>';
+                    },
                     { enableHighAccuracy: true }
                 );
             } else {
-                alert("เบราว์เซอร์ไม่รองรับ GPS");
+                alert("เบราว์เซอร์ของคุณไม่รองรับการดึงตำแหน่ง");
             }
         };
 
-        async function calculateDistance(lat, lng) {
+        // ใช้ OSRM API ในการคำนวณระยะทางขับรถ (และใช้พิกัดร้านค้าจากหลังบ้าน)
+        async function calculateAndDisplayDistance(lat, lng) {
             try {
-                // คำนวณระยะทางขับรถผ่าน OSRM API (ฟรี)
-                const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${STORE_LNG},${STORE_LAT};${lng},${lat}?overview=false`);
+                const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${shopLng},${shopLat};${lng},${lat}?overview=false`);
                 const data = await res.json();
                 if(data.routes && data.routes.length > 0) {
                     deliveryInfo.distance = parseFloat((data.routes[0].distance / 1000).toFixed(1));
                 }
-            } catch(e) {
-                // หาก API ล่ม ให้คำนวณเส้นตรง (Haversine) แทน
-                const p = 0.017453292519943295; 
+            } catch (e) {
+                console.log("OSRM Error, fallback to Haversine line");
+                const p = 0.017453292519943295;
                 const c = Math.cos;
-                const a = 0.5 - c((lat - STORE_LAT) * p)/2 + c(STORE_LAT * p) * c(lat * p) * (1 - c((lng - STORE_LNG) * p))/2;
+                const a = 0.5 - c((lat - shopLat) * p)/2 + c(shopLat * p) * c(lat * p) * (1 - c((lng - shopLng) * p))/2;
                 deliveryInfo.distance = parseFloat((12742 * Math.asin(Math.sqrt(a))).toFixed(1));
             }
             
-            deliveryInfo.fee = Math.ceil(deliveryInfo.distance * DELIVERY_RATE_PER_KM);
+            deliveryInfo.fee = Math.ceil(deliveryInfo.distance * deliveryRatePerKm);
             deliveryInfo.lat = lat;
             deliveryInfo.lng = lng;
+            
+            document.getElementById('dist-display').innerText = deliveryInfo.distance;
+            document.getElementById('fee-display').innerText = deliveryInfo.fee;
 
-            document.getElementById('modal-dist-display').innerText = deliveryInfo.distance;
-            document.getElementById('modal-fee-display').innerText = deliveryInfo.fee;
+            // เช็คระยะทางว่าเกินที่ร้านกำหนดหรือไม่
+            const btnSave = document.getElementById('btn-save-address');
+            const warnText = document.getElementById('radius-warning');
+            
+            if(deliveryInfo.distance > deliveryMaxRadius) {
+                warnText.innerHTML = `<i class="fas fa-exclamation-circle"></i> ขออภัย พิกัดนี้อยู่นอกระยะการจัดส่งที่ร้านกำหนด (สูงสุด ${deliveryMaxRadius} กม.)`;
+                warnText.classList.remove('hidden');
+                btnSave.classList.replace('bg-slate-800', 'bg-slate-400');
+                btnSave.disabled = true;
+            } else {
+                warnText.classList.add('hidden');
+                btnSave.classList.replace('bg-slate-400', 'bg-slate-800');
+                btnSave.disabled = false;
+            }
         }
 
         window.saveAddress = () => {
             const name = document.getElementById('cust-name').value;
             const phone = document.getElementById('cust-phone').value;
             const address = document.getElementById('cust-address').value;
-            if(!name || !phone || !address || !deliveryInfo.lat) return alert('กรุณากรอกข้อมูลและปักหมุดแผนที่ให้ครบถ้วน');
+            
+            if(!name || !phone || !address || !deliveryInfo.lat) {
+                return alert('กรุณากรอกข้อมูลให้ครบและปักหมุดบนแผนที่');
+            }
             
             deliveryInfo.name = name;
             deliveryInfo.phone = phone;
             deliveryInfo.address = address;
-            
             document.getElementById('display-address').innerText = address;
-            document.getElementById('delivery-dist-text').innerText = `(${deliveryInfo.distance} กม.)`;
             document.getElementById('address-modal').classList.add('hidden');
+            
             updateCartUI();
         };
 
+        // ---------------- ระบบชำระเงินและการสั่งซื้อ ----------------
         window.openPaymentModal = () => {
-            if (!isStoreOpen) return;
-            if(!deliveryInfo.lat) return openAddressModal();
+            if (!isStoreOpen) return alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่แล้ว');
+            if(!deliveryInfo.address || !deliveryInfo.lat) return openAddressModal();
+            
+            const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+            const total = subtotal - appliedDiscount + deliveryInfo.fee;
+            
+            document.getElementById('pay-amount-display').innerText = total > 0 ? total.toFixed(2) : 0;
+            document.getElementById('pay-amount-cod').innerText = total > 0 ? total.toFixed(2) : 0;
+            
             document.getElementById('payment-modal').classList.remove('hidden');
         };
-        
+
+        window.switchPaymentTab = (type) => {
+            paymentMethod = type;
+            if(type === 'transfer') {
+                document.getElementById('tab-transfer').classList.replace('text-slate-500', 'text-rose-600');
+                document.getElementById('tab-transfer').classList.add('bg-white', 'shadow-sm');
+                document.getElementById('tab-cod').classList.replace('text-rose-600', 'text-slate-500');
+                document.getElementById('tab-cod').classList.remove('bg-white', 'shadow-sm');
+                
+                document.getElementById('payment-content-transfer').classList.remove('hidden');
+                document.getElementById('payment-content-cod').classList.add('hidden');
+            } else {
+                document.getElementById('tab-cod').classList.replace('text-slate-500', 'text-rose-600');
+                document.getElementById('tab-cod').classList.add('bg-white', 'shadow-sm');
+                document.getElementById('tab-transfer').classList.replace('text-rose-600', 'text-slate-500');
+                document.getElementById('tab-transfer').classList.remove('bg-white', 'shadow-sm');
+                
+                document.getElementById('payment-content-cod').classList.remove('hidden');
+                document.getElementById('payment-content-transfer').classList.add('hidden');
+            }
+        };
+
         window.closePaymentModal = () => document.getElementById('payment-modal').classList.add('hidden');
 
-        window.simulatePaymentSuccess = async () => {
-            if (!isStoreOpen) return;
-            document.getElementById('payment-modal').classList.add('hidden');
+        window.submitOrder = async () => {
+            if (!isStoreOpen) return alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่แล้ว');
             
+            const btn = document.getElementById('btn-submit-order');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> กำลังดำเนินการ...';
+
+            let slipUrl = null;
+            // (ในระบบจริงหากใช้ Firebase Storage ให้ใส่โค้ดอัปโหลดสลิปตรงนี้)
+
             const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
             const total = subtotal - appliedDiscount + deliveryInfo.fee;
 
             try {
-                // บันทึก Order พร้อม Location ลง Firebase
-                await addDoc(collection(db, "orders"), {
+                const orderDoc = await addDoc(collection(db, "orders"), {
                     type: "delivery",
-                    customer: `${deliveryInfo.name} (${deliveryInfo.phone})`,
+                    customer: `${deliveryInfo.name}`,
+                    phone: deliveryInfo.phone,
                     address: deliveryInfo.address,
-                    location: { lat: deliveryInfo.lat, lng: deliveryInfo.lng }, // เพิ่มการส่ง GPS
+                    location: { lat: deliveryInfo.lat, lng: deliveryInfo.lng }, // ส่งพิกัดให้ร้านค้า
                     distance: deliveryInfo.distance,
                     deliveryFee: deliveryInfo.fee,
                     items: cart,
                     discount: appliedDiscount,
                     couponCode: appliedCouponCode,
                     total: total > 0 ? total : 0,
+                    paymentMethod: paymentMethod,
+                    slipUrl: slipUrl,
                     status: "รอยืนยัน",
                     timestamp: serverTimestamp()
                 });
 
                 if(appliedCouponCode) {
                     const coupon = allCoupons.find(c => c.code === appliedCouponCode);
-                    if(coupon) await updateDoc(doc(db, "coupons", coupon.id), { usedCount: increment(1) });
+                    if(coupon) {
+                        await updateDoc(doc(db, "coupons", coupon.id), { usedCount: increment(1) });
+                    }
                 }
 
-                alert('สั่งอาหารสำเร็จ! ร้านค้าได้รับพิกัดจัดส่งของคุณแล้ว');
+                document.getElementById('payment-modal').classList.add('hidden');
                 cart = []; appliedDiscount = 0; appliedCouponCode = '';
                 document.getElementById('coupon-input').value = '';
                 updateCartUI();
+                
+                // เปิดหน้า Tracking
+                startTracking(orderDoc.id);
+
             } catch (e) {
                 alert("Error: " + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'ยืนยันคำสั่งซื้อ';
             }
         };
 
+        // ---------------- ระบบ Tracking ออเดอร์ ----------------
+        function startTracking(orderId) {
+            document.getElementById('tracking-modal').classList.remove('hidden');
+            document.getElementById('track-order-id').innerText = orderId.toUpperCase().slice(-8);
+            
+            JsBarcode("#order-barcode", orderId.toUpperCase().slice(-8), {
+                format: "CODE128", width: 2, height: 40, displayValue: false
+            });
+
+            onSnapshot(doc(db, "orders", orderId), (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    updateTrackingUI(data.status, data.riderName, data.riderPhone);
+                }
+            });
+        }
+
+        function updateTrackingUI(status, riderName, riderPhone) {
+            const statuses = ['รอยืนยัน', 'กำลังทำอาหาร', 'รอไรเดอร์มารับ', 'กำลังจัดส่ง', 'เสร็จสิ้น'];
+            
+            statuses.forEach(s => {
+                const el = document.getElementById(`status-icon-${s}`);
+                if(el) el.className = "w-8 h-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center border-4 border-white shadow-sm relative z-10 transition-all duration-300";
+            });
+
+            const currentIndex = statuses.indexOf(status);
+            statuses.forEach((s, idx) => {
+                const el = document.getElementById(`status-icon-${s}`);
+                if (idx <= currentIndex && el) {
+                    el.className = "w-8 h-8 rounded-full bg-rose-500 text-white flex items-center justify-center border-4 border-white shadow-md relative z-10 transition-all duration-300 transform scale-110";
+                }
+            });
+
+            if (riderName) {
+                document.getElementById('track-rider-info').innerHTML = `กำลังจัดส่งโดยคุณ ${riderName} <br><i class="fas fa-phone-alt"></i> ${riderPhone || '-'}`;
+            }
+        }
+
         setTimeout(() => openAddressModal(), 500);
-        fetchMenus();
+        fetchMenus(); 
     </script>
 </body>
 </html>
