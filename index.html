@@ -32,7 +32,7 @@
         <div class="px-4 max-w-md mx-auto">
             <div class="flex justify-between items-center mb-3">
                 <h1 class="text-xl font-bold">Terra Bite Delivery</h1>
-                <!-- ปุ่มเรียกดูสถานะออเดอร์ล่าสุด (จะแสดงเมื่อเคยสั่งออเดอร์ไว้) -->
+                <!-- ปุ่มเรียกดูสถานะออเดอร์ล่าสุด -->
                 <button id="btn-track-order" onclick="openLatestTracking()" class="hidden text-xs bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-full font-bold shadow-sm transition-colors">
                     <i class="fas fa-motorcycle"></i> สถานะบิล
                 </button>
@@ -86,7 +86,7 @@
             </div>
             <div class="flex justify-between items-center mb-3 text-sm text-rose-500">
                 <span>ค่าจัดส่ง <span id="delivery-dist-text" class="text-xs"></span></span>
-                <span class="font-medium">+ ฿<span id="cart-delivery">0</span></span>
+                <span class="font-medium" id="cart-delivery-display">+ ฿0</span>
             </div>
             <div class="flex justify-between items-center pt-3 border-t border-slate-100">
                 <div>
@@ -262,11 +262,11 @@
 
         let map, marker;
 
-        // 1. ตรวจสอบ LocalStorage สำหรับข้อมูลลูกค้าและออเดอร์ (อายุ 7 วัน)
-        const EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000;
-        const savedDelivInfo = localStorage.getItem('terra_deliv_info');
-        if (savedDelivInfo) {
-            try {
+        // 1. ตรวจสอบ LocalStorage ป้องกันการโดนบล็อก (Try-Catch)
+        try {
+            const EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000;
+            const savedDelivInfo = localStorage.getItem('terra_deliv_info');
+            if (savedDelivInfo) {
                 const parsedInfo = JSON.parse(savedDelivInfo);
                 const now = Date.now();
                 if (now - parsedInfo.savedAt < EXPIRY_TIME) {
@@ -279,21 +279,24 @@
                     localStorage.removeItem('terra_deliv_info');
                     setTimeout(() => openAddressModal(), 500);
                 }
-            } catch(e) {
+            } else {
                 setTimeout(() => openAddressModal(), 500);
             }
-        } else {
+
+            const latestOrderId = localStorage.getItem('terra_latest_order_id');
+            if (latestOrderId) {
+                document.getElementById('btn-track-order').classList.remove('hidden');
+            }
+        } catch(e) {
+            console.warn("LocalStorage is disabled or restricted. Running in fallback mode.");
             setTimeout(() => openAddressModal(), 500);
         }
 
-        const latestOrderId = localStorage.getItem('terra_latest_order_id');
-        if (latestOrderId) {
-            document.getElementById('btn-track-order').classList.remove('hidden');
-        }
-
         window.openLatestTracking = () => {
-            const id = localStorage.getItem('terra_latest_order_id');
-            if (id) startTracking(id);
+            try {
+                const id = localStorage.getItem('terra_latest_order_id');
+                if (id) startTracking(id);
+            } catch(e) {}
         };
 
         // 2. ดึงการตั้งค่าพิกัดและค่าส่งจากระบบหลังบ้าน (Real-time)
@@ -368,23 +371,27 @@
             window.renderMenus(); 
         }
 
-        // 3. ระบบโหลดเมนูและตัวเลือก (แก้บัคหน้าจอขาว ใช้ onSnapshot แบบเดียวกับ POS)
+        // 3. ระบบโหลดเมนูและตัวเลือก
         function fetchMenus() {
             const q = query(collection(db, "menu_items"));
             onSnapshot(q, (snapshot) => {
                 allMenus = [];
                 allCategories = [];
                 snapshot.forEach((docSnap) => {
-                    const item = { id: docSnap.id, ...docSnap.data() };
+                    const data = docSnap.data();
+                    const item = { id: docSnap.id, ...data };
                     allMenus.push(item);
-                    const cat = item.category || 'ไม่มีหมวดหมู่';
+                    const cat = (item.category && item.category.trim() !== '') ? item.category.trim() : 'ไม่มีหมวดหมู่';
                     if(!allCategories.includes(cat)) allCategories.push(cat);
                 });
+                
+                allCategories.sort();
+
                 window.renderCategoryFilters();
                 window.renderMenus();
             }, (error) => {
                 console.error("Menu fetch error:", error);
-                document.getElementById('menu-container').innerHTML = `<div class="text-center py-10 text-rose-500">เกิดข้อผิดพลาดในการโหลดเมนู กรุณารีเฟรชหน้าเว็บ</div>`;
+                document.getElementById('menu-container').innerHTML = `<div class="text-center py-10 text-rose-500">เกิดข้อผิดพลาดในการโหลดเมนู กรุณารีเฟรชหน้าเว็บอีกครั้ง</div>`;
             });
         }
 
@@ -437,25 +444,36 @@
                 return;
             }
 
-            // เรียงลำดับเมนูในเครื่อง (เก่าไปใหม่)
             let sortedMenus = [...allMenus].sort((a, b) => {
-                let ta = (a.created_at && a.created_at.seconds) ? a.created_at.seconds : 0;
-                let tb = (b.created_at && b.created_at.seconds) ? b.created_at.seconds : 0;
-                return ta - tb;
+                const getSecs = (val) => {
+                    if (!val) return 0;
+                    if (val.seconds) return val.seconds;
+                    if (typeof val.getTime === 'function') return val.getTime() / 1000;
+                    return 0;
+                };
+                return getSecs(a.created_at) - getSecs(b.created_at);
             });
 
             let htmlString = '';
 
             if(currentCategory === 'all') {
                 allCategories.forEach(cat => {
-                    let itemsInCat = sortedMenus.filter(m => (m.category || 'ไม่มีหมวดหมู่') === cat);
+                    let itemsInCat = sortedMenus.filter(m => {
+                        const mCat = (m.category && m.category.trim() !== '') ? m.category.trim() : 'ไม่มีหมวดหมู่';
+                        return mCat === cat;
+                    });
+                    
                     if(itemsInCat.length > 0) {
                         htmlString += `<h2 class="font-bold text-lg text-slate-800 mt-6 mb-3 px-2 border-l-4 border-rose-500">${cat}</h2>`;
                         htmlString += itemsInCat.map(item => generateMenuCardHTML(item)).join('');
                     }
                 });
             } else {
-                let itemsInCat = sortedMenus.filter(m => (m.category || 'ไม่มีหมวดหมู่') === currentCategory);
+                let itemsInCat = sortedMenus.filter(m => {
+                    const mCat = (m.category && m.category.trim() !== '') ? m.category.trim() : 'ไม่มีหมวดหมู่';
+                    return mCat === currentCategory;
+                });
+                
                 if (itemsInCat.length === 0) {
                     htmlString = '<div class="text-center py-10 text-rose-300">ไม่มีเมนูในหมวดหมู่นี้</div>';
                 } else {
@@ -767,7 +785,9 @@
             deliveryInfo.address = address;
             deliveryInfo.savedAt = Date.now(); 
             
-            localStorage.setItem('terra_deliv_info', JSON.stringify(deliveryInfo));
+            try {
+                localStorage.setItem('terra_deliv_info', JSON.stringify(deliveryInfo));
+            } catch(e) {}
 
             document.getElementById('display-address').innerText = address;
             document.getElementById('address-modal').classList.add('hidden');
@@ -845,8 +865,10 @@
                     if(coupon) await updateDoc(doc(db, "coupons", coupon.id), { usedCount: increment(1) });
                 }
 
-                localStorage.setItem('terra_latest_order_id', orderDoc.id);
-                document.getElementById('btn-track-order').classList.remove('hidden');
+                try {
+                    localStorage.setItem('terra_latest_order_id', orderDoc.id);
+                    document.getElementById('btn-track-order').classList.remove('hidden');
+                } catch(e) {}
 
                 document.getElementById('payment-modal').classList.add('hidden');
                 alert('สั่งอาหารสำเร็จ! ร้านค้าได้รับออเดอร์ของคุณแล้ว');
