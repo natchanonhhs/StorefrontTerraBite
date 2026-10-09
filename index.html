@@ -54,7 +54,7 @@
         </div>
     </div>
 
-    <!-- พื้นที่โชว์คูปองด้านบนสุด (เฉพาะที่ตั้งให้แสดง) -->
+    <!-- พื้นที่โชว์คูปองด้านบนสุด -->
     <div class="max-w-md mx-auto px-4 py-3 hidden" id="coupon-showcase-container">
         <h3 class="font-bold text-sm text-slate-700 mb-2"><i class="fas fa-ticket-alt text-rose-500 mr-1"></i> โค้ดส่วนลด / โปรโมชั่น</h3>
         <div class="flex gap-3 overflow-x-auto hide-scrollbar pb-2" id="coupon-showcase">
@@ -65,15 +65,12 @@
         <div class="text-center py-10 text-rose-300"><i class="fas fa-spinner fa-spin text-2xl mb-2"></i><p>กำลังโหลดเมนู...</p></div>
     </main>
 
-    <!-- แถบตะกร้าสินค้า (เดลิเวอรี่) พร้อมระบบคูปอง -->
+    <!-- แถบตะกร้าสินค้า -->
     <div id="cart-bar" class="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-4px_15px_rgba(0,0,0,0.1)] rounded-t-3xl transition-transform duration-300 transform translate-y-full z-30">
         <div class="max-w-md mx-auto px-6 py-4">
             
-            <div id="cart-items-preview" class="mb-3 max-h-32 overflow-y-auto text-sm text-slate-600 border-b pb-2 hidden">
-                <!-- รายการอาหารในตะกร้า -->
-            </div>
+            <div id="cart-items-preview" class="mb-3 max-h-32 overflow-y-auto text-sm text-slate-600 border-b pb-2 hidden"></div>
 
-            <!-- ส่วนลดคูปอง -->
             <div class="flex gap-2 mb-3">
                 <input type="text" id="coupon-input" placeholder="พิมพ์โค้ดส่วนลดที่นี่..." class="w-full p-2 border border-slate-200 rounded-lg text-sm uppercase outline-none focus:border-rose-500 bg-slate-50">
                 <button onclick="applyCoupon()" class="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap shadow-sm">ใช้คูปอง</button>
@@ -103,7 +100,7 @@
         </div>
     </div>
 
-    <!-- Modal เลือกตัวเลือกเสริมอาหาร (Dynamic Modifiers แบบเดียวกับหลังบ้าน) -->
+    <!-- Modal เลือกตัวเลือกเสริมอาหาร (Dynamic Modifiers) -->
     <div id="modifier-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-end">
         <div class="bg-white w-full max-w-md mx-auto rounded-t-3xl p-6 flex flex-col max-h-[90vh]">
             <div class="flex justify-between items-center mb-4 shrink-0">
@@ -111,9 +108,7 @@
                 <button onclick="closeModifierModal()" class="text-slate-400 text-xl hover:text-rose-500"><i class="fas fa-times"></i></button>
             </div>
             
-            <div id="mod-dynamic-options" class="flex-1 overflow-y-auto min-h-0 mb-4 space-y-4">
-                <!-- โค้ด JS จะสร้างตัวเลือกจาก Firebase มาใส่ตรงนี้อัตโนมัติ -->
-            </div>
+            <div id="mod-dynamic-options" class="flex-1 overflow-y-auto min-h-0 mb-4 space-y-4"></div>
             
             <div class="shrink-0 mb-4 border-t border-slate-100 pt-4">
                 <label class="block text-sm font-medium text-slate-700 mb-2"><i class="fas fa-edit text-rose-500 mr-1"></i> หมายเหตุเพิ่มเติม (ถ้ามี)</label>
@@ -183,7 +178,7 @@
                 <p class="text-sm text-slate-600">เตรียมเงินสด <span class="font-bold text-rose-600" id="pay-amount-cod"></span> บาท<br>ชำระกับไรเดอร์เมื่อได้รับอาหาร</p>
             </div>
 
-            <button onclick="submitOrder()" id="btn-submit-order" class="w-full bg-rose-600 text-white py-3 rounded-xl font-bold shadow-md mt-2 hover:bg-rose-700">ยืนยันการสั่งซื้อ</button>
+            <button onclick="simulatePaymentSuccess()" id="btn-submit-order" class="w-full bg-rose-600 text-white py-3 rounded-xl font-bold shadow-md mt-2 hover:bg-rose-700">ยืนยันการสั่งซื้อ</button>
             <button onclick="closePaymentModal()" class="w-full text-slate-500 py-3 mt-1 text-sm font-medium hover:text-slate-700">ยกเลิก</button>
         </div>
     </div>
@@ -234,7 +229,7 @@
     <!-- SCRIPT -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, serverTimestamp, query, orderBy, doc, onSnapshot, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, serverTimestamp, query, doc, onSnapshot, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyAsgcKhn0V1lYjF754aypxZv5C-PmHCvno",
@@ -268,7 +263,7 @@
         let map, marker;
 
         // 1. ตรวจสอบ LocalStorage สำหรับข้อมูลลูกค้าและออเดอร์ (อายุ 7 วัน)
-        const EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000; // 7 วัน
+        const EXPIRY_TIME = 7 * 24 * 60 * 60 * 1000;
         const savedDelivInfo = localStorage.getItem('terra_deliv_info');
         if (savedDelivInfo) {
             try {
@@ -291,7 +286,6 @@
             setTimeout(() => openAddressModal(), 500);
         }
 
-        // เช็คว่ามี Tracking ออเดอร์ล่าสุดหรือไม่
         const latestOrderId = localStorage.getItem('terra_latest_order_id');
         if (latestOrderId) {
             document.getElementById('btn-track-order').classList.remove('hidden');
@@ -374,20 +368,24 @@
             window.renderMenus(); 
         }
 
-        async function fetchMenus() {
-            // ดึงข้อมูลเมนู เรียงตามวันที่สร้าง (เก่าสุดไปใหม่สุด)
-            const q = query(collection(db, "menu_items"), orderBy("created_at", "asc"));
-            const querySnapshot = await getDocs(q);
-            allMenus = [];
-            allCategories = [];
-            querySnapshot.forEach((docSnap) => {
-                const item = { id: docSnap.id, ...docSnap.data() };
-                allMenus.push(item);
-                const cat = item.category || 'ไม่มีหมวดหมู่';
-                if(!allCategories.includes(cat)) allCategories.push(cat);
+        // 3. ระบบโหลดเมนูและตัวเลือก (แก้บัคหน้าจอขาว ใช้ onSnapshot แบบเดียวกับ POS)
+        function fetchMenus() {
+            const q = query(collection(db, "menu_items"));
+            onSnapshot(q, (snapshot) => {
+                allMenus = [];
+                allCategories = [];
+                snapshot.forEach((docSnap) => {
+                    const item = { id: docSnap.id, ...docSnap.data() };
+                    allMenus.push(item);
+                    const cat = item.category || 'ไม่มีหมวดหมู่';
+                    if(!allCategories.includes(cat)) allCategories.push(cat);
+                });
+                window.renderCategoryFilters();
+                window.renderMenus();
+            }, (error) => {
+                console.error("Menu fetch error:", error);
+                document.getElementById('menu-container').innerHTML = `<div class="text-center py-10 text-rose-500">เกิดข้อผิดพลาดในการโหลดเมนู กรุณารีเฟรชหน้าเว็บ</div>`;
             });
-            window.renderCategoryFilters();
-            window.renderMenus();
         }
 
         window.renderCategoryFilters = () => {
@@ -406,7 +404,6 @@
             window.renderMenus();
         };
 
-        // ฟังก์ชันสร้าง Card เมนู
         function generateMenuCardHTML(item) {
             const isOutOfStock = item.stock !== undefined && item.stock !== null && item.stock <= 0;
             const opacityStyle = (!isStoreOpen || isOutOfStock) ? 'opacity-50 grayscale bg-slate-100' : 'bg-white';
@@ -434,37 +431,43 @@
 
         window.renderMenus = () => {
             const container = document.getElementById('menu-container');
-            container.innerHTML = '';
-            if(allMenus.length === 0) return;
+            
+            if (allMenus.length === 0) {
+                container.innerHTML = '<div class="text-center py-10 text-rose-300">ยังไม่มีเมนูอาหารในขณะนี้</div>';
+                return;
+            }
 
-            // เรียงลำดับเมนูในเครื่อง (เก่าไปใหม่) เผื่อกรณี firebase ดึงมาสลับกัน
+            // เรียงลำดับเมนูในเครื่อง (เก่าไปใหม่)
             let sortedMenus = [...allMenus].sort((a, b) => {
-                let ta = a.created_at?.seconds || 0;
-                let tb = b.created_at?.seconds || 0;
-                return ta - tb; // น้อยไปมาก = เก่าไปใหม่
+                let ta = (a.created_at && a.created_at.seconds) ? a.created_at.seconds : 0;
+                let tb = (b.created_at && b.created_at.seconds) ? b.created_at.seconds : 0;
+                return ta - tb;
             });
 
+            let htmlString = '';
+
             if(currentCategory === 'all') {
-                // ถ้าเลือกหมวด "ทั้งหมด" ให้แยกแสดงตามหัวข้อ
                 allCategories.forEach(cat => {
                     let itemsInCat = sortedMenus.filter(m => (m.category || 'ไม่มีหมวดหมู่') === cat);
                     if(itemsInCat.length > 0) {
-                        container.innerHTML += `<h2 class="font-bold text-lg text-slate-800 mt-6 mb-3 px-2 border-l-4 border-rose-500">${cat}</h2>`;
-                        container.innerHTML += itemsInCat.map(item => generateMenuCardHTML(item)).join('');
+                        htmlString += `<h2 class="font-bold text-lg text-slate-800 mt-6 mb-3 px-2 border-l-4 border-rose-500">${cat}</h2>`;
+                        htmlString += itemsInCat.map(item => generateMenuCardHTML(item)).join('');
                     }
                 });
             } else {
                 let itemsInCat = sortedMenus.filter(m => (m.category || 'ไม่มีหมวดหมู่') === currentCategory);
                 if (itemsInCat.length === 0) {
-                    container.innerHTML = '<div class="text-center py-10 text-rose-300">ไม่มีเมนูในหมวดหมู่นี้</div>';
+                    htmlString = '<div class="text-center py-10 text-rose-300">ไม่มีเมนูในหมวดหมู่นี้</div>';
                 } else {
-                    container.innerHTML += `<h2 class="font-bold text-lg text-slate-800 mt-6 mb-3 px-2 border-l-4 border-rose-500">${currentCategory}</h2>`;
-                    container.innerHTML += itemsInCat.map(item => generateMenuCardHTML(item)).join('');
+                    htmlString += `<h2 class="font-bold text-lg text-slate-800 mt-6 mb-3 px-2 border-l-4 border-rose-500">${currentCategory}</h2>`;
+                    htmlString += itemsInCat.map(item => generateMenuCardHTML(item)).join('');
                 }
             }
+            
+            container.innerHTML = htmlString;
         };
 
-        // ---------------- ระบบ Modifiers ไดนามิก (ดึงจาก Firebase ตรงกับระบบหลังบ้าน) ----------------
+        // ---------------- ระบบ Modifiers ไดนามิก ----------------
         window.openModifierModal = (id) => {
             if (!isStoreOpen) return alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่ชั่วคราว');
             
@@ -670,6 +673,7 @@
             document.getElementById('address-modal').classList.remove('hidden');
             if(!map) {
                 setTimeout(() => {
+                    if (typeof L === 'undefined') return;
                     const initLat = deliveryInfo.lat || shopLat;
                     const initLng = deliveryInfo.lng || shopLng;
                     map = L.map('map').setView([initLat, initLng], 13);
@@ -679,7 +683,7 @@
                     marker.on('dragend', function(e) {
                         calculateAndDisplayDistance(marker.getLatLng().lat, marker.getLatLng().lng);
                     });
-                }, 200);
+                }, 300);
             } else {
                 const lat = deliveryInfo.lat || shopLat;
                 const lng = deliveryInfo.lng || shopLng;
@@ -689,7 +693,6 @@
         };
 
         window.closeAddressModal = () => {
-            // อนุญาตให้ปิด Modal ได้เลย (ถ้าไม่มีพิกัด ก็แค่ปิดไป)
             document.getElementById('address-modal').classList.add('hidden');
         };
 
@@ -762,9 +765,8 @@
             deliveryInfo.name = name;
             deliveryInfo.phone = phone;
             deliveryInfo.address = address;
-            deliveryInfo.savedAt = Date.now(); // บันทึกเวลา
+            deliveryInfo.savedAt = Date.now(); 
             
-            // บันทึกลง LocalStorage ให้จำไว้ 7 วัน
             localStorage.setItem('terra_deliv_info', JSON.stringify(deliveryInfo));
 
             document.getElementById('display-address').innerText = address;
@@ -843,7 +845,6 @@
                     if(coupon) await updateDoc(doc(db, "coupons", coupon.id), { usedCount: increment(1) });
                 }
 
-                // บันทึก Order ID ล่าสุดลง LocalStorage สำหรับปุ่มติดตามสถานะถาวร
                 localStorage.setItem('terra_latest_order_id', orderDoc.id);
                 document.getElementById('btn-track-order').classList.remove('hidden');
 
@@ -905,6 +906,8 @@
             }
         }
 
+        setTimeout(() => openAddressModal(), 500);
+        fetchMenus();
     </script>
 </body>
 </html>
