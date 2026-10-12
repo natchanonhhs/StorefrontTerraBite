@@ -202,7 +202,7 @@
             </div>
             <div class="p-4 bg-white border-b border-slate-100 shadow-sm z-10 shrink-0">
                 <h3 class="font-bold text-slate-800 text-lg"><i class="fas fa-map-marked-alt text-blue-600 mr-1"></i> เส้นทางจัดส่งแบบสด</h3>
-                <p class="text-xs text-slate-500 mt-1">แสดงเส้นทางและพิกัดจำลองของพนักงานจัดส่ง</p>
+                <p class="text-xs text-slate-500 mt-1">แสดงเส้นทางและพิกัดของพนักงานจัดส่งแบบเรียลไทม์</p>
             </div>
             <div id="live-map" class="flex-1 w-full bg-slate-200"></div>
         </div>
@@ -1323,25 +1323,54 @@
                     if (data.routes && data.routes.length > 0) {
                         const routeLine = L.geoJSON(data.routes[0].geometry, { style: { color: '#2563eb', weight: 5 } }).addTo(liveMap);
                         liveMap.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
-                        
-                        const coords = data.routes[0].geometry.coordinates;
-                        const midPoint = coords[Math.floor(coords.length / 2)]; 
-                        
-                        const riderIcon = L.divIcon({
-                            html: '<div class="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-md"><i class="fas fa-motorcycle text-sm"></i></div>',
-                            className: '', iconSize: [32, 32], iconAnchor: [16, 16]
-                        });
-                        riderMarker = L.marker([midPoint[1], midPoint[0]], { icon: riderIcon }).addTo(liveMap).bindPopup("ตำแหน่งไรเดอร์ (จำลอง)");
                     }
                 } catch(e) {
                     console.log("OSRM Live Route Fetch Error", e);
                 }
+
+                // รีเซ็ต riderMarker และ Unsubscribe ของเก่า (ถ้ามี)
+                if (riderMarker) riderMarker = null;
+                if (window.liveMapUnsubscribe) window.liveMapUnsubscribe();
+
+                const riderIcon = L.divIcon({
+                    html: '<div class="bg-blue-600 text-white w-8 h-8 rounded-full flex items-center justify-center border-2 border-white shadow-md"><i class="fas fa-motorcycle text-sm"></i></div>',
+                    className: '', iconSize: [32, 32], iconAnchor: [16, 16]
+                });
+
+                // ดึงตำแหน่งไรเดอร์แบบ Real-time จาก Firestore (ออเดอร์นั้นๆ)
+                window.liveMapUnsubscribe = onSnapshot(doc(db, "orders", orderId), (docSnap) => {
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        
+                        // สมมติฐานข้อมูลเก็บพิกัดไรเดอร์ไว้ใน riderLocation.lat และ riderLocation.lng
+                        const rLat = data.riderLocation?.lat;
+                        const rLng = data.riderLocation?.lng;
+
+                        if (rLat && rLng) {
+                            if (riderMarker) {
+                                riderMarker.setLatLng([rLat, rLng]); // อัปเดตตำแหน่งเมื่อมีการเคลื่อนที่
+                            } else {
+                                riderMarker = L.marker([rLat, rLng], { icon: riderIcon }).addTo(liveMap).bindPopup("ตำแหน่งไรเดอร์ (เรียลไทม์)").openPopup();
+                            }
+                        } else if (!riderMarker) {
+                             // กรณีไรเดอร์ยังไม่แชร์พิกัด ให้อยู่ที่ร้านก่อน
+                             riderMarker = L.marker([shopLat, shopLng], { icon: riderIcon }).addTo(liveMap).bindPopup("กำลังรอพิกัดไรเดอร์...");
+                        }
+                    }
+                });
+
             }, 300);
         };
 
         window.closeLiveRoute = () => {
             document.getElementById('live-route-modal').classList.add('hidden');
             document.getElementById('live-route-modal').classList.remove('flex');
+            
+            // ยกเลิกการฟีดข้อมูลเรียลไทม์เมื่อปิดแผนที่เพื่อไม่ให้รกหน่วยความจำ
+            if (window.liveMapUnsubscribe) {
+                window.liveMapUnsubscribe();
+                window.liveMapUnsubscribe = null;
+            }
         };
 
         fetchMenus();
