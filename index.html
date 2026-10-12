@@ -191,8 +191,8 @@
                 <div id="payment-content-transfer">
                     <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm mb-4 relative">
                         <div class="flex items-center justify-center gap-2 mb-6">
-                            <!-- เปลี่ยนลิงก์รูป PromptPay เป็นไฟล์ PNG ที่มีเสถียรภาพกว่า SVG บนบางอุปกรณ์ -->
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/PromptPay_logo.svg/1024px-PromptPay_logo.svg.png" class="h-6 object-contain" alt="PromptPay">
+                            <!-- แก้ไขลิงก์ PromptPay ให้มั่นคงและมีตัวอักษรสำรองกรณีรูปไม่ขึ้น -->
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/PromptPay_logo.svg" onerror="this.outerHTML='<span class=\'font-bold text-[#113566] text-lg\'>Prompt<span class=\'text-[#fdb614]\'>Pay</span></span>'" class="h-6 object-contain" alt="PromptPay">
                         </div>
                         <div id="qrcode" class="flex justify-center mb-4"></div>
                         
@@ -416,7 +416,6 @@
             }, 1000);
         }
 
-        // === ฟังก์ชันโหลดคิวอาร์โค้ดลงเครื่อง ===
         window.downloadQRCode = () => {
             const qrContainer = document.getElementById('qrcode');
             const canvas = qrContainer.querySelector('canvas');
@@ -433,7 +432,6 @@
             }
         };
 
-        // === ระบบจัดการป้ายโฆษณา (Banners) ===
         let banners = [];
         let currentBannerIdx = 0;
         let bannerIntervalId = null;
@@ -530,6 +528,7 @@
             setTimeout(() => openAddressModal(), 500);
         }
 
+        // ดึงการตั้งค่าร้านและตรวจสอบตัวแปรระยะส่งฟรีแบบครอบคลุม
         onSnapshot(doc(db, "settings", "delivery"), (docSnap) => {
             if (docSnap.exists()) {
                 const data = docSnap.data();
@@ -538,7 +537,8 @@
                 deliveryRatePerKm = parseFloat(data.fee) || 10; 
                 deliveryMaxRadius = parseFloat(data.radius) || 15;
                 
-                let rawFreeDist = data.freeDistance ?? data.freeDeliveryDistance ?? data.free_distance ?? 0;
+                // ดักจับชื่อตัวแปรที่อาจจะใช้บันทึกในฐานข้อมูล (เผื่อชื่อไม่ตรงกัน)
+                let rawFreeDist = data.freeDistance ?? data.freeDeliveryDistance ?? data.free_distance ?? data.freeRadius ?? data.free ?? 0;
                 deliveryFreeDistance = parseFloat(rawFreeDist) || 0; 
                 
                 if (deliveryInfo.lat && deliveryInfo.lng) {
@@ -1020,6 +1020,7 @@
                 deliveryInfo.distance = parseFloat((12742 * Math.asin(Math.sqrt(a))).toFixed(1));
             }
             
+            // ใช้เงื่อนไขใหม่: ถ้าระยะทางน้อยกว่าหรือเท่ากับระยะส่งฟรี ให้ค่าส่งเป็น 0 ทันที
             if (deliveryInfo.distance <= deliveryFreeDistance) {
                 deliveryInfo.fee = 0;
             } else {
