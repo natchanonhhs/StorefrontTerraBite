@@ -11,6 +11,9 @@
     <!-- ติดตั้ง แผนที่ Leaflet ฟรี API -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- โหลดไลบรารีสำหรับวาดรูป QR Code -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <style>
         body { font-family: 'Prompt', sans-serif; background-color: #fff1f2; } 
@@ -49,6 +52,11 @@
             </div>
         </div>
     </header>
+
+    <!-- พื้นที่แสดงป้ายโฆษณา (เลื่อนอัตโนมัติ) -->
+    <div id="banner-carousel-container" class="max-w-md mx-auto relative hidden cursor-pointer shadow-sm overflow-hidden" style="aspect-ratio: 29.7 / 21;" onclick="openBannerModal()">
+        <img id="banner-image" src="" class="w-full h-full object-cover transition-opacity duration-500">
+    </div>
 
     <!-- ตัวกรองหมวดหมู่เดลิเวอรี่ -->
     <div class="bg-white shadow-sm mb-2 sticky top-[100px] z-20">
@@ -98,6 +106,17 @@
                 <button onclick="openPaymentModal()" id="btn-checkout" class="bg-rose-600 text-white px-6 py-3 rounded-xl font-bold shadow-md shadow-rose-200">
                     ชำระเงิน <i class="fas fa-arrow-right ml-1"></i>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal รายละเอียดป้ายโฆษณา -->
+    <div id="banner-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl relative flex flex-col max-h-[90vh]">
+            <button onclick="closeBannerModal()" class="absolute top-4 right-4 bg-white/50 hover:bg-white text-slate-800 w-8 h-8 rounded-full flex items-center justify-center shadow z-10 transition-colors"><i class="fas fa-times"></i></button>
+            <img id="modal-banner-img" src="" class="w-full rounded-t-3xl object-cover shrink-0" style="aspect-ratio: 29.7 / 21;">
+            <div class="p-6 overflow-y-auto flex-1 min-h-0">
+                <div id="modal-banner-detail" class="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed"></div>
             </div>
         </div>
     </div>
@@ -158,30 +177,60 @@
 
     <!-- Modal ชำระเงิน -->
     <div id="payment-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center">
-        <div class="bg-white w-11/12 max-w-sm rounded-3xl p-6 text-center">
-            <h3 class="font-bold text-lg mb-2">ยืนยันคำสั่งซื้อ</h3>
-            <p class="text-sm text-slate-500 mb-4">ระบบจะส่งออเดอร์พร้อมพิกัดจัดส่งไปยังร้านค้า</p>
+        <div class="bg-white w-11/12 max-w-md rounded-3xl p-6 flex flex-col max-h-[90vh]">
+            <h3 class="font-bold text-lg mb-2 shrink-0">ยืนยันคำสั่งซื้อ</h3>
+            <p class="text-sm text-slate-500 mb-4 shrink-0">ระบบจะส่งออเดอร์พร้อมพิกัดจัดส่งไปยังร้านค้า</p>
             
-            <div class="flex gap-2 mb-4 bg-slate-100 p-1 rounded-xl">
+            <div class="flex gap-2 mb-4 bg-slate-100 p-1 rounded-xl shrink-0">
                 <button id="tab-transfer" onclick="switchPaymentTab('transfer')" class="flex-1 py-2 rounded-lg text-sm font-bold bg-white shadow-sm text-rose-600">โอนเงิน/สแกน QR</button>
                 <button id="tab-cod" onclick="switchPaymentTab('cod')" class="flex-1 py-2 rounded-lg text-sm font-bold text-slate-500">เงินสดปลายทาง</button>
             </div>
 
-            <div id="payment-content-transfer">
-                <div class="text-center mb-4">
-                    <p class="text-sm text-slate-500 mb-2">โอนเงินจำนวน <span class="font-bold text-rose-600" id="pay-amount-display"></span> บาท</p>
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=PromptPay" class="mx-auto w-40 h-40 border p-2 rounded-xl bg-white mb-2">
-                    <p class="text-xs text-slate-400">พร้อมเพย์ร้านค้า</p>
+            <div class="flex-1 overflow-y-auto min-h-0">
+                <div id="payment-content-transfer">
+                    <!-- หน้าตา QR Code แบบ PromptPay (ตามรูปเป๊ะๆ) -->
+                    <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm mb-4 relative">
+                        <div class="flex items-center gap-2 mb-6">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/PromptPay_logo.svg/1200px-PromptPay_logo.svg.png" class="h-6 object-contain">
+                        </div>
+                        <div id="qrcode" class="flex justify-center mb-6"></div>
+                        <div class="flex justify-between items-center mb-3 text-sm text-slate-600">
+                            <span>รหัสใช้ได้จนถึง</span>
+                            <span id="qr-countdown" class="font-bold text-slate-800">05:00</span>
+                        </div>
+                        <div class="flex justify-between items-center text-sm text-slate-600">
+                            <span>ยอดชำระ</span>
+                            <span class="font-bold text-lg text-slate-800">฿<span id="pay-amount-display-qr"></span></span>
+                        </div>
+                        <div class="mt-6 border-t border-slate-100 pt-4 flex flex-col items-center">
+                            <img id="shop-logo-qr" src="" class="h-10 object-contain hidden mb-2 rounded">
+                            <p class="text-[10px] text-rose-600 font-bold text-center">กรุณาตรวจสอบเลขพร้อมเพย์ และชื่อผู้ใช้บัญชีให้ถูกต้องก่อนโอน</p>
+                            <div class="text-[10px] text-slate-600 mt-2 text-center leading-relaxed">
+                                ชื่อบัญชี: <span id="pp-name" class="font-bold">-</span><br>
+                                ธนาคาร: <span id="pp-bank" class="font-bold">-</span><br>
+                                เลขพร้อมเพย์: <span id="pp-no" class="font-bold">-</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm font-bold text-slate-700 mb-2">แนบสลิปการโอนเงิน <span class="text-rose-500">*</span></label>
+                        <input type="file" id="slip-upload" accept="image/*" class="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-bold file:bg-rose-50 file:text-rose-700 hover:file:bg-rose-100 border border-slate-200 rounded-lg p-1 outline-none">
+                        <p id="slip-status" class="text-xs text-slate-500 mt-1"></p>
+                        <input type="hidden" id="slip-url">
+                    </div>
+                </div>
+
+                <div id="payment-content-cod" class="hidden text-center py-10">
+                    <i class="fas fa-motorcycle text-5xl text-slate-300 mb-4"></i>
+                    <p class="text-sm text-slate-600">เตรียมเงินสด <span class="font-bold text-rose-600 text-xl" id="pay-amount-cod"></span> บาท<br>ชำระกับไรเดอร์เมื่อได้รับอาหาร</p>
                 </div>
             </div>
 
-            <div id="payment-content-cod" class="hidden text-center py-6">
-                <i class="fas fa-motorcycle text-4xl text-slate-300 mb-3"></i>
-                <p class="text-sm text-slate-600">เตรียมเงินสด <span class="font-bold text-rose-600" id="pay-amount-cod"></span> บาท<br>ชำระกับไรเดอร์เมื่อได้รับอาหาร</p>
+            <div class="shrink-0 mt-4 border-t border-slate-100 pt-4">
+                <button onclick="simulatePaymentSuccess()" id="btn-submit-order" class="w-full bg-rose-600 text-white py-3 rounded-xl font-bold shadow-md hover:bg-rose-700 transition-colors">ยืนยันการสั่งซื้อ</button>
+                <button onclick="closePaymentModal()" class="w-full text-slate-500 py-3 mt-1 text-sm font-medium hover:text-slate-700">ยกเลิก</button>
             </div>
-
-            <button onclick="simulatePaymentSuccess()" id="btn-submit-order" class="w-full bg-rose-600 text-white py-3 rounded-xl font-bold shadow-md mt-2 hover:bg-rose-700">ยืนยันการสั่งซื้อ</button>
-            <button onclick="closePaymentModal()" class="w-full text-slate-500 py-3 mt-1 text-sm font-medium hover:text-slate-700">ยกเลิก</button>
         </div>
     </div>
 
@@ -224,8 +273,10 @@
     <!-- SCRIPT -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, serverTimestamp, query, doc, onSnapshot, updateDoc, increment } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, getDocs, serverTimestamp, query, doc, onSnapshot, updateDoc, increment, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
 
+        // ตั้งค่า Firebase
         const firebaseConfig = {
             apiKey: "AIzaSyAsgcKhn0V1lYjF754aypxZv5C-PmHCvno",
             authDomain: "mobile-first-5543c.firebaseapp.com",
@@ -236,6 +287,11 @@
         };
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
+
+        // ตั้งค่า Supabase สำหรับอัปโหลดสลิป
+        const supabaseUrl = 'https://vupihvoldblwdtkfnjjc.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1cGlodm9sZGJsd2R0a2ZuampjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzOTAwNDAsImV4cCI6MjEwNjk2NjA0MH0.Db91stvkIKdpWOz_nn185obEkcJX4V12HOZlkgiBO3s';
+        const supabase = createClient(supabaseUrl, supabaseKey);
 
         // --- ตัวแปรสำหรับตั้งค่าร้านค้า ---
         let shopLat = 13.7563; 
@@ -261,6 +317,125 @@
         let myOrderUnsubscribes = []; 
         window.tempRatings = {}; 
         window.orderETAs = {};
+
+        // === ระบบ PromptPay ===
+        function formatTLV(tag, value) {
+            return tag + ('0' + value.length).slice(-2) + value;
+        }
+
+        function generatePromptPayPayload(mobileNumber, amount) {
+            let formattedMobile = mobileNumber.length >= 13 ? mobileNumber : ("0066" + mobileNumber.replace(/^0/, "").replace(/-/g, ""));
+            let merchantAccount = formatTLV("00", "A000000677010111") + formatTLV("01", formattedMobile);
+            let payloadFormat = formatTLV("00", "01");
+            let initiationMethod = formatTLV("01", "12"); 
+            let merchantInfo = formatTLV("29", merchantAccount);
+            let countryCode = formatTLV("58", "TH");
+            let currencyCode = formatTLV("53", "764"); 
+
+            let amountStr = parseFloat(amount).toFixed(2);
+            let transactionAmount = formatTLV("54", amountStr);
+
+            let data = payloadFormat + initiationMethod + merchantInfo + currencyCode + countryCode + transactionAmount + "6304";
+
+            let crc = 0xFFFF;
+            for (let i = 0; i < data.length; i++) {
+                let x = ((crc >> 8) ^ data.charCodeAt(i)) & 0xFF;
+                x ^= x >> 4;
+                crc = ((crc << 8) ^ (x << 12) ^ (x << 5) ^ x) & 0xFFFF;
+            }
+            let checksum = (crc & 0xFFFF).toString(16).toUpperCase();
+            while (checksum.length < 4) checksum = "0" + checksum;
+
+            return data + checksum;
+        }
+
+        let qrTimerInterval = null;
+        function startQrTimer() {
+            clearInterval(qrTimerInterval);
+            let timeLeft = 300; // 5 นาที
+            const display = document.getElementById('qr-countdown');
+            display.innerText = "05:00";
+            
+            qrTimerInterval = setInterval(() => {
+                timeLeft--;
+                if (timeLeft <= 0) {
+                    clearInterval(qrTimerInterval);
+                    display.innerText = "รหัสหมดอายุ กรุณากดเลือกช่องทางชำระเงินใหม่";
+                    document.getElementById('qrcode').innerHTML = "<p class='text-rose-500 font-bold py-10'>QR Code หมดอายุ</p>";
+                } else {
+                    const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+                    const s = (timeLeft % 60).toString().padStart(2, '0');
+                    display.innerText = `${m}:${s}`;
+                }
+            }, 1000);
+        }
+
+        // === ระบบจัดการป้ายโฆษณา (Banners) ===
+        let banners = [];
+        let currentBannerIdx = 0;
+        let bannerIntervalId = null;
+
+        onSnapshot(collection(db, "banners"), (snapshot) => {
+            banners = [];
+            snapshot.forEach(doc => banners.push({id: doc.id, ...doc.data()}));
+            renderBanners();
+        });
+
+        function renderBanners() {
+            const container = document.getElementById('banner-carousel-container');
+            const now = new Date();
+            
+            const activeBanners = banners.filter(b => {
+                const start = b.startDate ? new Date(b.startDate) : new Date(0);
+                const end = b.endDate ? new Date(b.endDate) : new Date(2100,0,1);
+                return now >= start && now <= end;
+            });
+
+            if (activeBanners.length === 0) {
+                container.classList.add('hidden');
+                clearInterval(bannerIntervalId);
+                return;
+            }
+
+            container.classList.remove('hidden');
+            if (currentBannerIdx >= activeBanners.length) currentBannerIdx = 0;
+            
+            const banner = activeBanners[currentBannerIdx];
+            document.getElementById('banner-image').src = banner.imgUrl;
+            document.getElementById('banner-image').style.opacity = 1;
+
+            clearInterval(bannerIntervalId);
+            if (activeBanners.length > 1 && banner.timer) {
+                bannerIntervalId = setInterval(() => {
+                    document.getElementById('banner-image').style.opacity = 0;
+                    setTimeout(() => {
+                        currentBannerIdx = (currentBannerIdx + 1) % activeBanners.length;
+                        document.getElementById('banner-image').src = activeBanners[currentBannerIdx].imgUrl;
+                        document.getElementById('banner-image').style.opacity = 1;
+                    }, 500);
+                }, (banner.timer * 60000) || 60000); // แปลงนาทีเป็นมิลลิวินาที
+            }
+        }
+
+        window.openBannerModal = () => {
+            const now = new Date();
+            const activeBanners = banners.filter(b => {
+                const start = b.startDate ? new Date(b.startDate) : new Date(0);
+                const end = b.endDate ? new Date(b.endDate) : new Date(2100,0,1);
+                return now >= start && now <= end;
+            });
+            const b = activeBanners[currentBannerIdx];
+            if(!b) return;
+            document.getElementById('modal-banner-img').src = b.imgUrl;
+            document.getElementById('modal-banner-detail').innerText = b.detail || '';
+            document.getElementById('banner-modal').classList.remove('hidden');
+            document.getElementById('banner-modal').classList.add('flex');
+        };
+        
+        window.closeBannerModal = () => {
+            document.getElementById('banner-modal').classList.add('hidden');
+            document.getElementById('banner-modal').classList.remove('flex');
+        };
 
         // 1. ตรวจสอบ LocalStorage
         let shouldOpenAddressModal = true;
@@ -307,7 +482,6 @@
             }
         });
 
-        // ดึงคะแนนรีวิวรวมมาโชว์ใน Header
         async function loadAverageRating() {
             try {
                 const q = query(collection(db, "orders"));
@@ -456,7 +630,6 @@
 
         window.renderMenus = () => {
             const container = document.getElementById('menu-container');
-            
             if (allMenus.length === 0) {
                 container.innerHTML = '<div class="text-center py-10 text-rose-300">ยังไม่มีเมนูอาหารในขณะนี้</div>';
                 return;
@@ -473,14 +646,12 @@
             });
 
             let htmlString = '';
-
             if(currentCategory === 'all') {
                 allCategories.forEach(cat => {
                     let itemsInCat = sortedMenus.filter(m => {
                         const mCat = (m.category && m.category.trim() !== '') ? m.category.trim() : 'ไม่มีหมวดหมู่';
                         return mCat === cat;
                     });
-                    
                     if(itemsInCat.length > 0) {
                         htmlString += `<h2 class="font-bold text-lg text-slate-800 mt-6 mb-3 px-2 border-l-4 border-rose-500">${cat}</h2>`;
                         htmlString += itemsInCat.map(item => generateMenuCardHTML(item)).join('');
@@ -491,7 +662,6 @@
                     const mCat = (m.category && m.category.trim() !== '') ? m.category.trim() : 'ไม่มีหมวดหมู่';
                     return mCat === currentCategory;
                 });
-                
                 if (itemsInCat.length === 0) {
                     htmlString = '<div class="text-center py-10 text-rose-300">ไม่มีเมนูในหมวดหมู่นี้</div>';
                 } else {
@@ -499,17 +669,14 @@
                     htmlString += itemsInCat.map(item => generateMenuCardHTML(item)).join('');
                 }
             }
-            
             container.innerHTML = htmlString;
         };
 
         // ---------------- ระบบ Modifiers ไดนามิก ----------------
         window.openModifierModal = (id) => {
             if (!isStoreOpen) return alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่ชั่วคราว');
-            
             const item = allMenus.find(m => m.id === id);
             if(!item) return;
-            
             currentModItem = item;
             document.getElementById('mod-item-id').value = item.id;
             document.getElementById('mod-item-name').innerText = item.name;
@@ -544,7 +711,6 @@
             } else {
                 container.innerHTML = '<p class="text-sm text-slate-400 text-center py-6 bg-slate-50 rounded-xl border border-slate-100">ไม่มีตัวเลือกเพิ่มเติมสำหรับเมนูนี้</p>';
             }
-            
             updateModPrice();
             document.getElementById('modifier-modal').classList.remove('hidden');
         };
@@ -592,9 +758,7 @@
             } else {
                 cart.push({ id, name, price: finalPrice, qty: 1, options: optionsStr, note: note });
             }
-            
             closeModifierModal();
-            
             if (document.getElementById('coupon-input').value.trim() !== '') {
                 applyCoupon(false);
             } else {
@@ -716,7 +880,6 @@
                     map = L.map('map').setView([initLat, initLng], 13);
                     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
                     
-                    // เพิ่มหมุดร้านค้า (สีแดง)
                     const redIcon = new L.Icon({
                         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
                         shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
@@ -724,7 +887,6 @@
                     });
                     window.shopMarkerStatic = L.marker([shopLat, shopLng], {icon: redIcon}).addTo(map).bindPopup("📍 ที่ตั้งร้านค้า").openPopup();
 
-                    // เพิ่มหมุดลูกค้า (สีน้ำเงิน ลากได้)
                     marker = L.marker([initLat, initLng], {draggable: true}).addTo(map).bindPopup("จุดจัดส่งของคุณ");
                     
                     marker.on('dragend', function(e) {
@@ -832,10 +994,12 @@
             const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
             const total = subtotal - appliedDiscount + deliveryInfo.fee;
             
-            document.getElementById('pay-amount-display').innerText = total > 0 ? total.toFixed(2) : 0;
+            document.getElementById('pay-amount-display-qr').innerText = total > 0 ? total.toFixed(2) : 0;
             document.getElementById('pay-amount-cod').innerText = total > 0 ? total.toFixed(2) : 0;
             
+            switchPaymentTab('transfer');
             document.getElementById('payment-modal').classList.remove('hidden');
+            document.getElementById('payment-modal').classList.add('flex');
         };
         
         window.switchPaymentTab = (type) => {
@@ -848,6 +1012,9 @@
                 
                 document.getElementById('payment-content-transfer').classList.remove('hidden');
                 document.getElementById('payment-content-cod').classList.add('hidden');
+                
+                // สร้า่ง QR Code พร้อมเพย์
+                generateDelivQrCode();
             } else {
                 document.getElementById('tab-cod').classList.replace('text-slate-500', 'text-rose-600');
                 document.getElementById('tab-cod').classList.add('bg-white', 'shadow-sm');
@@ -856,13 +1023,95 @@
                 
                 document.getElementById('payment-content-cod').classList.remove('hidden');
                 document.getElementById('payment-content-transfer').classList.add('hidden');
+                
+                clearInterval(qrTimerInterval);
             }
         };
 
-        window.closePaymentModal = () => document.getElementById('payment-modal').classList.add('hidden');
+        window.generateDelivQrCode = async () => {
+            try {
+                const docSnap = await getDoc(doc(db, "settings", "receipt"));
+                let ppNo = "0000000000";
+                let ppName = "-";
+                let ppBank = "-";
+                let shopLogo = "";
+                if(docSnap.exists()){
+                    const data = docSnap.data();
+                    ppNo = data.promptPayNo || ppNo;
+                    ppName = data.promptPayName || ppName;
+                    ppBank = data.promptPayBank || ppBank;
+                    shopLogo = data.logo || "";
+                }
+                
+                document.getElementById('pp-no').innerText = ppNo;
+                document.getElementById('pp-name').innerText = ppName;
+                document.getElementById('pp-bank').innerText = ppBank;
+                
+                const logoImg = document.getElementById('shop-logo-qr');
+                if(shopLogo) {
+                    logoImg.src = shopLogo;
+                    logoImg.classList.remove('hidden');
+                } else {
+                    logoImg.classList.add('hidden');
+                }
+
+                const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+                const total = subtotal - appliedDiscount + deliveryInfo.fee;
+                
+                if (total <= 0) return;
+
+                const payload = generatePromptPayPayload(ppNo, total);
+                document.getElementById("qrcode").innerHTML = "";
+                new QRCode(document.getElementById("qrcode"), {
+                    text: payload,
+                    width: 200,
+                    height: 200,
+                    colorDark: "#000000",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+                
+                startQrTimer();
+            } catch(e) {
+                console.error(e);
+                document.getElementById("qrcode").innerHTML = "<p class='text-rose-500 text-sm'>เกิดข้อผิดพลาดในการสร้าง QR Code</p>";
+            }
+        };
+
+        // ระบบแนบไฟล์สลิป
+        document.getElementById('slip-upload').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+            const status = document.getElementById('slip-status');
+            status.innerHTML = '<i class="fas fa-spinner fa-spin text-rose-500"></i> กำลังอัปโหลดสลิป...';
+            try {
+                const fileExt = file.name.split('.').pop();
+                const fileName = `slip_${Date.now()}.${fileExt}`;
+                const { data, error } = await supabase.storage.from('restaurant-assets').upload(fileName, file);
+                if (error) throw error;
+                const { data: publicUrlData } = supabase.storage.from('restaurant-assets').getPublicUrl(fileName);
+                document.getElementById('slip-url').value = publicUrlData.publicUrl;
+                status.innerHTML = '<i class="fas fa-check-circle text-emerald-500"></i> อัปโหลดสำเร็จแล้ว';
+            } catch(err) {
+                status.innerHTML = '<i class="fas fa-times-circle text-rose-500"></i> อัปโหลดล้มเหลว กรุณาลองใหม่';
+                e.target.value = '';
+            }
+        });
+
+        window.closePaymentModal = () => {
+            document.getElementById('payment-modal').classList.add('hidden');
+            document.getElementById('payment-modal').classList.remove('flex');
+            clearInterval(qrTimerInterval);
+        };
 
         window.simulatePaymentSuccess = async () => {
             if (!isStoreOpen) return alert('ขออภัย ร้านปิดรับออเดอร์เดลิเวอรี่แล้ว');
+            
+            let finalSlipUrl = null;
+            if (paymentMethod === 'transfer') {
+                finalSlipUrl = document.getElementById('slip-url').value;
+                if (!finalSlipUrl) return alert('กรุณาแนบสลิปการโอนเงินก่อนยืนยันการสั่งซื้อ');
+            }
             
             const btn = document.getElementById('btn-submit-order');
             const origHtml = btn.innerHTML;
@@ -886,6 +1135,7 @@
                     couponCode: appliedCouponCode,
                     total: total > 0 ? total : 0,
                     paymentMethod: paymentMethod,
+                    slipUrl: finalSlipUrl,
                     status: "รอยืนยัน",
                     timestamp: serverTimestamp()
                 });
@@ -904,10 +1154,15 @@
                 } catch(e) {}
 
                 document.getElementById('payment-modal').classList.add('hidden');
+                document.getElementById('payment-modal').classList.remove('flex');
+                clearInterval(qrTimerInterval);
                 alert('สั่งอาหารสำเร็จ! ร้านค้าได้รับออเดอร์ของคุณแล้ว');
                 
                 cart = []; appliedDiscount = 0; appliedCouponCode = '';
                 document.getElementById('coupon-input').value = '';
+                document.getElementById('slip-url').value = '';
+                document.getElementById('slip-upload').value = '';
+                document.getElementById('slip-status').innerHTML = '';
                 updateCartUI();
                 
                 openLatestTracking();
@@ -942,7 +1197,6 @@
                     }
                 });
 
-                // จัดเรียงรีวิวใหม่ล่าสุดขึ้นก่อน
                 reviews.sort((a,b) => {
                     const ta = a.review.timestamp?.seconds || a.timestamp?.seconds || 0;
                     const tb = b.review.timestamp?.seconds || b.timestamp?.seconds || 0;
@@ -983,7 +1237,6 @@
                         dateStr = r.timestamp.toDate().toLocaleString('th-TH', { dateStyle: 'short' });
                     }
 
-                    // เซ็นเซอร์ชื่อลูกค้าเพื่อความปลอดภัย (เช่น นัถการ -> นั***)
                     let custName = r.customer || 'ลูกค้าไม่ระบุชื่อ';
                     let maskedName = custName.substring(0, 1) + '***' + (custName.length > 4 ? custName.substring(custName.length - 1) : '');
                     if (custName.includes('(')) maskedName = custName.split('(')[0].trim().substring(0,2) + '***';
@@ -1328,7 +1581,6 @@
                     console.log("OSRM Live Route Fetch Error", e);
                 }
 
-                // รีเซ็ต riderMarker และ Unsubscribe ของเก่า (ถ้ามี)
                 if (riderMarker) riderMarker = null;
                 if (window.liveMapUnsubscribe) window.liveMapUnsubscribe();
 
@@ -1337,23 +1589,19 @@
                     className: '', iconSize: [32, 32], iconAnchor: [16, 16]
                 });
 
-                // ดึงตำแหน่งไรเดอร์แบบ Real-time จาก Firestore (ออเดอร์นั้นๆ)
                 window.liveMapUnsubscribe = onSnapshot(doc(db, "orders", orderId), (docSnap) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
-                        
-                        // สมมติฐานข้อมูลเก็บพิกัดไรเดอร์ไว้ใน riderLocation.lat และ riderLocation.lng
                         const rLat = data.riderLocation?.lat;
                         const rLng = data.riderLocation?.lng;
 
                         if (rLat && rLng) {
                             if (riderMarker) {
-                                riderMarker.setLatLng([rLat, rLng]); // อัปเดตตำแหน่งเมื่อมีการเคลื่อนที่
+                                riderMarker.setLatLng([rLat, rLng]); 
                             } else {
                                 riderMarker = L.marker([rLat, rLng], { icon: riderIcon }).addTo(liveMap).bindPopup("ตำแหน่งไรเดอร์ (เรียลไทม์)").openPopup();
                             }
                         } else if (!riderMarker) {
-                             // กรณีไรเดอร์ยังไม่แชร์พิกัด ให้อยู่ที่ร้านก่อน
                              riderMarker = L.marker([shopLat, shopLng], { icon: riderIcon }).addTo(liveMap).bindPopup("กำลังรอพิกัดไรเดอร์...");
                         }
                     }
@@ -1366,7 +1614,6 @@
             document.getElementById('live-route-modal').classList.add('hidden');
             document.getElementById('live-route-modal').classList.remove('flex');
             
-            // ยกเลิกการฟีดข้อมูลเรียลไทม์เมื่อปิดแผนที่เพื่อไม่ให้รกหน่วยความจำ
             if (window.liveMapUnsubscribe) {
                 window.liveMapUnsubscribe();
                 window.liveMapUnsubscribe = null;
