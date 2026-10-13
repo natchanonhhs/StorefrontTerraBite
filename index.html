@@ -54,9 +54,9 @@
         </div>
     </header>
 
-    <!-- พื้นที่แสดงป้ายโฆษณา (เลื่อนอัตโนมัติ) 16:5 -->
-    <div id="banner-carousel-container" class="max-w-md mx-auto relative hidden cursor-pointer shadow-sm overflow-hidden" style="aspect-ratio: 16 / 5;" onclick="openBannerModal()">
-        <img id="banner-image" src="" class="w-full h-full object-cover transition-opacity duration-500">
+    <!-- พื้นที่แสดงป้ายโฆษณา (เลื่อนอัตโนมัติ และสไลด์ได้) 16:5 -->
+    <div id="banner-carousel-container" class="max-w-md mx-auto relative hidden shadow-sm overflow-hidden" style="aspect-ratio: 16 / 5; cursor: grab;" onclick="handleBannerClick()">
+        <img id="banner-image" src="" class="w-full h-full object-cover transition-opacity duration-300 select-none" draggable="false">
     </div>
 
     <!-- ตัวกรองหมวดหมู่เดลิเวอรี่ -->
@@ -191,7 +191,7 @@
                 <div id="payment-content-transfer">
                     <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm mb-4 relative">
                         <div class="flex items-center justify-center gap-2 mb-6">
-                            <!-- แก้ไขลิงก์ PromptPay ให้มั่นคงและมีตัวอักษรสำรองกรณีรูปไม่ขึ้น -->
+                            <!-- ลิงก์ PromptPay ที่มั่นคงและมีตัวอักษรสำรองกรณีรูปไม่ขึ้น -->
                             <img src="https://upload.wikimedia.org/wikipedia/commons/d/d0/PromptPay_logo.svg" onerror="this.outerHTML='<span class=\'font-bold text-[#113566] text-lg\'>Prompt<span class=\'text-[#fdb614]\'>Pay</span></span>'" class="h-6 object-contain" alt="PromptPay">
                         </div>
                         <div id="qrcode" class="flex justify-center mb-4"></div>
@@ -284,9 +284,6 @@
     <div id="custom-alert-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4 transition-opacity duration-300 opacity-0 pointer-events-none">
         <div class="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col transform transition-transform duration-300 scale-95" id="custom-alert-box">
             <div class="p-6 text-center">
-                <div class="w-14 h-14 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <i class="fas fa-exclamation-circle text-2xl"></i>
-                </div>
                 <h3 class="font-bold text-lg text-slate-800 mb-2">แจ้งเตือนจากระบบ</h3>
                 <p id="custom-alert-message" class="text-sm text-slate-600 leading-relaxed"></p>
             </div>
@@ -316,6 +313,18 @@
         const supabaseUrl = 'https://vupihvoldblwdtkfnjjc.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1cGlodm9sZGJsd2R0a2ZuampjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzOTAwNDAsImV4cCI6MjEwNjk2NjA0MH0.Db91stvkIKdpWOz_nn185obEkcJX4V12HOZlkgiBO3s';
         const supabase = createClient(supabaseUrl, supabaseKey);
+
+        // --- ระบบสร้าง Order ID ให้ตรงกับหลังบ้าน ---
+        window.formatOrderID = (id) => {
+            if (!id) return 'AD00000';
+            if (id.startsWith('AD')) return id;
+            let hash = 0;
+            for (let i = 0; i < id.length; i++) {
+                hash = ((hash << 5) - hash) + id.charCodeAt(i);
+                hash |= 0; 
+            }
+            return 'AD' + String(Math.abs(hash) % 100000).padStart(5, '0');
+        };
 
         // --- Custom Alert System ---
         window.showCustomAlert = (message) => {
@@ -432,9 +441,44 @@
             }
         };
 
+        // --- ระบบ Banner พร้อมลาก/ปัด (Swipe) ---
         let banners = [];
+        let activeBanners = [];
         let currentBannerIdx = 0;
         let bannerIntervalId = null;
+
+        window.nextBanner = () => {
+            if (activeBanners.length <= 1) return;
+            const imgEl = document.getElementById('banner-image');
+            imgEl.style.opacity = 0;
+            setTimeout(() => {
+                currentBannerIdx = (currentBannerIdx + 1) % activeBanners.length;
+                imgEl.src = activeBanners[currentBannerIdx].imgUrl;
+                imgEl.style.opacity = 1;
+            }, 300);
+            resetBannerTimer();
+        };
+
+        window.prevBanner = () => {
+            if (activeBanners.length <= 1) return;
+            const imgEl = document.getElementById('banner-image');
+            imgEl.style.opacity = 0;
+            setTimeout(() => {
+                currentBannerIdx = (currentBannerIdx - 1 + activeBanners.length) % activeBanners.length;
+                imgEl.src = activeBanners[currentBannerIdx].imgUrl;
+                imgEl.style.opacity = 1;
+            }, 300);
+            resetBannerTimer();
+        };
+
+        function resetBannerTimer() {
+            clearInterval(bannerIntervalId);
+            const banner = activeBanners[currentBannerIdx];
+            if (activeBanners.length > 1 && banner && banner.timer) {
+                const delayMs = (banner.timer * 1000) || 5000;
+                bannerIntervalId = setInterval(window.nextBanner, delayMs);
+            }
+        }
 
         onSnapshot(collection(db, "banners"), (snapshot) => {
             banners = [];
@@ -446,7 +490,7 @@
             const container = document.getElementById('banner-carousel-container');
             const now = new Date();
             
-            const activeBanners = banners.filter(b => {
+            activeBanners = banners.filter(b => {
                 const start = b.startDate ? new Date(b.startDate) : new Date(0);
                 const end = b.endDate ? new Date(b.endDate) : new Date(2100,0,1);
                 return now >= start && now <= end;
@@ -461,31 +505,46 @@
             container.classList.remove('hidden');
             if (currentBannerIdx >= activeBanners.length) currentBannerIdx = 0;
             
-            const banner = activeBanners[currentBannerIdx];
-            document.getElementById('banner-image').src = banner.imgUrl;
+            document.getElementById('banner-image').src = activeBanners[currentBannerIdx].imgUrl;
             document.getElementById('banner-image').style.opacity = 1;
-
-            clearInterval(bannerIntervalId);
-            if (activeBanners.length > 1 && banner.timer) {
-                const delayMs = (banner.timer * 1000) || 5000; 
-                bannerIntervalId = setInterval(() => {
-                    document.getElementById('banner-image').style.opacity = 0;
-                    setTimeout(() => {
-                        currentBannerIdx = (currentBannerIdx + 1) % activeBanners.length;
-                        document.getElementById('banner-image').src = activeBanners[currentBannerIdx].imgUrl;
-                        document.getElementById('banner-image').style.opacity = 1;
-                    }, 500);
-                }, delayMs);
-            }
+            
+            resetBannerTimer();
         }
 
+        // ระบบจับความเคลื่อนไหว (Swipe) ของ Banner
+        let touchstartX = 0;
+        let touchendX = 0;
+        let isDraggingBanner = false;
+        let wasDragged = false;
+        const bannerContainer = document.getElementById('banner-carousel-container');
+
+        const handleGesture = () => {
+            if (touchendX < touchstartX - 40) { window.nextBanner(); wasDragged = true; } 
+            else if (touchendX > touchstartX + 40) { window.prevBanner(); wasDragged = true; } 
+            else { wasDragged = false; }
+        };
+
+        bannerContainer.addEventListener('touchstart', e => { touchstartX = e.changedTouches[0].screenX; wasDragged = false; }, {passive: true});
+        bannerContainer.addEventListener('touchend', e => { touchendX = e.changedTouches[0].screenX; handleGesture(); }, {passive: true});
+
+        bannerContainer.addEventListener('mousedown', e => { isDraggingBanner = true; touchstartX = e.screenX; wasDragged = false; bannerContainer.style.cursor = 'grabbing'; });
+        bannerContainer.addEventListener('mousemove', e => { if(isDraggingBanner && Math.abs(e.screenX - touchstartX) > 10) wasDragged = true; });
+        bannerContainer.addEventListener('mouseup', e => {
+            if(isDraggingBanner) {
+                touchendX = e.screenX;
+                isDraggingBanner = false;
+                bannerContainer.style.cursor = 'grab';
+                handleGesture();
+            }
+        });
+        bannerContainer.addEventListener('mouseleave', () => { isDraggingBanner = false; bannerContainer.style.cursor = 'grab'; });
+
+        window.handleBannerClick = () => {
+            if (wasDragged) { wasDragged = false; return; }
+            window.openBannerModal();
+        };
+
         window.openBannerModal = () => {
-            const now = new Date();
-            const activeBanners = banners.filter(b => {
-                const start = b.startDate ? new Date(b.startDate) : new Date(0);
-                const end = b.endDate ? new Date(b.endDate) : new Date(2100,0,1);
-                return now >= start && now <= end;
-            });
             const b = activeBanners[currentBannerIdx];
             if(!b) return;
             document.getElementById('modal-banner-img').src = b.imgUrl;
@@ -536,8 +595,6 @@
                 shopLng = data.lng || 100.5018;
                 deliveryRatePerKm = parseFloat(data.fee) || 10; 
                 deliveryMaxRadius = parseFloat(data.radius) || 15;
-                
-                // ดักจับชื่อตัวแปรที่อาจจะใช้บันทึกในฐานข้อมูล (เผื่อชื่อไม่ตรงกัน)
                 let rawFreeDist = data.freeDistance ?? data.freeDeliveryDistance ?? data.free_distance ?? data.freeRadius ?? data.free ?? 0;
                 deliveryFreeDistance = parseFloat(rawFreeDist) || 0; 
                 
@@ -1020,7 +1077,6 @@
                 deliveryInfo.distance = parseFloat((12742 * Math.asin(Math.sqrt(a))).toFixed(1));
             }
             
-            // ใช้เงื่อนไขใหม่: ถ้าระยะทางน้อยกว่าหรือเท่ากับระยะส่งฟรี ให้ค่าส่งเป็น 0 ทันที
             if (deliveryInfo.distance <= deliveryFreeDistance) {
                 deliveryInfo.fee = 0;
             } else {
@@ -1216,12 +1272,9 @@
 
             const subtotal = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
             const total = subtotal - appliedDiscount + deliveryInfo.fee;
-            
-            const orderNo = 'AD' + Math.floor(10000 + Math.random() * 90000);
 
             try {
                 const orderDoc = await addDoc(collection(db, "orders"), {
-                    orderNumber: orderNo, 
                     type: "delivery",
                     customer: `${deliveryInfo.name}`,
                     phone: deliveryInfo.phone,
@@ -1256,7 +1309,8 @@
                 document.getElementById('payment-modal').classList.remove('flex');
                 clearInterval(qrTimerInterval);
                 
-                showCustomAlert('ทำรายการสั่งซื้อสำเร็จ ร้านค้าได้รับคำสั่งซื้อของคุณแล้ว (รหัส ' + orderNo + ')');
+                const orderNoDisplay = window.formatOrderID(orderDoc.id);
+                showCustomAlert('ทำรายการสั่งซื้อสำเร็จ ร้านค้าได้รับคำสั่งซื้อของคุณแล้ว (รหัส ' + orderNoDisplay + ')');
                 
                 cart = []; appliedDiscount = 0; appliedCouponCode = '';
                 document.getElementById('coupon-input').value = '';
@@ -1467,7 +1521,7 @@
                         card.innerHTML = generateTrackingCardHTML(orderId, data);
                     } else {
                         card.classList.remove('animate-pulse');
-                        card.innerHTML = `<p class="text-center text-xs text-rose-500 py-4">ไม่พบข้อมูลคำสั่งซื้อรหัส ${orderId.substring(0,8)}</p>`;
+                        card.innerHTML = `<p class="text-center text-xs text-rose-500 py-4">ไม่พบข้อมูลคำสั่งซื้อรหัส ${window.formatOrderID(orderId)}</p>`;
                     }
                 });
                 myOrderUnsubscribes.push(unsub);
@@ -1532,7 +1586,7 @@
             const riderPhone = data.riderPhone || '';
             const items = data.items || [];
             const total = data.total || 0;
-            const orderNoDisplay = data.orderNumber || orderId.substring(0,8);
+            const orderNoDisplay = window.formatOrderID(orderId);
             
             const statuses = ['รอยืนยัน', 'กำลังทำอาหาร', 'รอไรเดอร์มารับ', 'กำลังจัดส่ง', 'เสร็จสิ้น'];
             const currentIndex = statuses.indexOf(status);
