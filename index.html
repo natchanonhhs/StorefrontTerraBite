@@ -309,7 +309,7 @@
             appId: "1:375984636440:web:685692699c3320e201f96d"
         };
         const connect = initConnect(firebaseConfig, "customer");
-        const app = initializeApp(firebaseConfig);
+        // หมายเหตุ: ตัดโค้ด initializeApp(firebaseConfig) ที่ซ้ำซ้อนออกไปแล้วเพื่อไม่ให้เกิด Error
         const db = connect.db;
 
         const supabaseUrl = 'https://vupihvoldblwdtkfnjjc.supabase.co';
@@ -608,7 +608,7 @@
 
         async function loadAverageRating() {
             try {
-                const q = query(collection(db, "orders"));
+                const q = query(collection(db, "public_reviews"));
                 const querySnapshot = await getDocs(q);
                 let count = 0;
                 let total = 0;
@@ -1340,7 +1340,7 @@
             container.innerHTML = '<div class="text-center py-10"><i class="fas fa-spinner fa-spin text-3xl text-amber-500"></i><p class="text-slate-500 mt-3 text-sm">กำลังโหลดข้อมูล...</p></div>';
 
             try {
-                const q = query(collection(db, "orders"));
+                const q = query(collection(db, "public_reviews"));
                 const querySnapshot = await getDocs(q);
                 let reviews = [];
                 let totalFood = 0, totalDel = 0;
@@ -1464,7 +1464,9 @@
             const comment = document.getElementById(`review-comment-${orderId}`).value.trim();
 
             try {
-                await updateDoc(doc(db, "orders", orderId), {
+                const {setDoc}=await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
+                await connect.ensureUser();
+                await setDoc(doc(db, 'public_reviews', orderId), {status:'เสร็จสิ้น',
                     review: {
                         food: ratings.food,
                         delivery: ratings.del,
