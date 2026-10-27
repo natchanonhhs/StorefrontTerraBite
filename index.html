@@ -295,7 +295,6 @@
 
     <!-- SCRIPT -->
     <script type="module">
-        import { initConnect, escapeHTML, stageLabel } from "./terra-connect.js";
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
         import { getFirestore, collection, addDoc, getDocs, serverTimestamp, query, doc, onSnapshot, updateDoc, increment, getDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
         import { createClient } from "https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm";
@@ -308,9 +307,8 @@
             messagingSenderId: "375984636440",
             appId: "1:375984636440:web:685692699c3320e201f96d"
         };
-        const connect = initConnect(firebaseConfig, "customer");
-        // หมายเหตุ: ตัดโค้ด initializeApp(firebaseConfig) ที่ซ้ำซ้อนออกไปแล้วเพื่อไม่ให้เกิด Error
-        const db = connect.db;
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
 
         const supabaseUrl = 'https://vupihvoldblwdtkfnjjc.supabase.co';
         const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ1cGlodm9sZGJsd2R0a2ZuampjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEzOTAwNDAsImV4cCI6MjEwNjk2NjA0MH0.Db91stvkIKdpWOz_nn185obEkcJX4V12HOZlkgiBO3s';
@@ -608,7 +606,7 @@
 
         async function loadAverageRating() {
             try {
-                const q = query(collection(db, "public_reviews"));
+                const q = query(collection(db, "orders"));
                 const querySnapshot = await getDocs(q);
                 let count = 0;
                 let total = 0;
@@ -1276,9 +1274,7 @@
             const total = subtotal - appliedDiscount + deliveryInfo.fee;
 
             try {
-                const callUser = await connect.ensureUser();
                 const orderDoc = await addDoc(collection(db, "orders"), {
-                    customerUid: callUser.uid,
                     type: "delivery",
                     customer: `${deliveryInfo.name}`,
                     phone: deliveryInfo.phone,
@@ -1340,7 +1336,7 @@
             container.innerHTML = '<div class="text-center py-10"><i class="fas fa-spinner fa-spin text-3xl text-amber-500"></i><p class="text-slate-500 mt-3 text-sm">กำลังโหลดข้อมูล...</p></div>';
 
             try {
-                const q = query(collection(db, "public_reviews"));
+                const q = query(collection(db, "orders"));
                 const querySnapshot = await getDocs(q);
                 let reviews = [];
                 let totalFood = 0, totalDel = 0;
@@ -1464,9 +1460,7 @@
             const comment = document.getElementById(`review-comment-${orderId}`).value.trim();
 
             try {
-                const {setDoc}=await import('https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js');
-                await connect.ensureUser();
-                await setDoc(doc(db, 'public_reviews', orderId), {status:'เสร็จสิ้น',
+                await updateDoc(doc(db, "orders", orderId), {
                     review: {
                         food: ratings.food,
                         delivery: ratings.del,
@@ -1588,8 +1582,8 @@
 
         function generateTrackingCardHTML(orderId, data) {
             const status = data.status;
-            const riderName = escapeHTML(data.riderName || '');
-            const riderPhone = String(data.riderPhone || '').replace(/[^+0-9 -]/g, '');
+            const riderName = data.riderName || '';
+            const riderPhone = data.riderPhone || '';
             const items = data.items || [];
             const total = data.total || 0;
             const orderNoDisplay = window.formatOrderID(orderId);
@@ -1653,7 +1647,6 @@
                     </div>
                 </div>
                 
-                ${!isCompleted ? `<div class="tc-callorder"><button class="tc-btn tc-sub" onclick="terraChat('${orderId}')">แชตในออเดอร์</button><button class="tc-btn" onclick="terraCall('${orderId}', 'shop')">โทรหาร้านผ่านเว็บ</button>${data.riderUid ? `<button class="tc-btn tc-sub" onclick="terraCall('${orderId}', 'rider')">โทรหาไรเดอร์ผ่านเว็บ</button>` : ''}</div><p class="text-xs text-emerald-700">${data.riderUid ? escapeHTML(stageLabel(data.riderStage)) : 'ร้านกำลังเตรียมและจัดหาไรเดอร์'}</p>${data.riderLocation?.updatedAt ? `<p class="text-xs text-slate-500">พิกัดไรเดอร์ล่าสุด: ${data.riderLocation.updatedAt.toDate().toLocaleTimeString('th-TH')} (อาจไม่ใช่ตำแหน่งปัจจุบัน)</p>` : ''}` : ''}
                 <div id="body-${orderId}" class="${expandedClass} transition-all mt-4">
                     
                     <div class="relative bg-slate-50 p-4 rounded-xl border border-slate-100 overflow-hidden mb-4">
